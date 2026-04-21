@@ -1,7 +1,9 @@
 import argparse
 import os
 import random
+import shutil
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
@@ -12,6 +14,7 @@ import yaml
 from torch.utils.data import DataLoader, Dataset
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v")
 CLASS_NAMES = ("background", "projectile")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "train" / "config" / "train.yaml"
@@ -49,6 +52,365 @@ def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def _deep_merge_dict(base, patch):
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge_dict(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def _load_detector_pipeline_cfg(cfg):
+    defaults = {
+        "motion": {
+            "gaussian_ksize": 3,
+            "gaussian_sigma": 0.8,
+            "diff_threshold": 18,
+            "diff_threshold_min": 10,
+            "diff_threshold_max": 35,
+            "morph_kernel": 3,
+            "morph_iters": 1,
+            "area_min": 3,
+            "area_max": 120,
+            "ratio_max": 4.0,
+            "max_candidates": 16,
+        },
+        "roi": {
+            "output_size": int(cfg.get("model", {}).get("input_size", 32)),
+            "size_scale": 2.2,
+            "min_crop": 20,
+            "max_crop": 48,
+        },
+        "inference": {
+            "max_candidates": 8,
+        },
+    }
+
+    pellet_cfg_path = PROJECT_ROOT / "config" / "pellet.yaml"
+    if pellet_cfg_path.exists():
+        with open(pellet_cfg_path, "r", encoding="utf-8") as f:
+            pellet_cfg = yaml.safe_load(f) or {}
+        for key in ("motion", "roi", "inference"):
+            if isinstance(pellet_cfg.get(key), dict):
+                _deep_merge_dict(defaults[key], pellet_cfg[key])
+
+    user_pipe_cfg = cfg.get("detector_pipeline", {})
+    if isinstance(user_pipe_cfg, dict):
+        for key in ("motion", "roi", "inference"):
+            if isinstance(user_pipe_cfg.get(key), dict):
+                _deep_merge_dict(defaults[key], user_pipe_cfg[key])
+
+    return defaults
+
+
+def _to_gray_and_blur(frame_bgr, gaussian_ksize, gaussian_sigma):
+    if frame_bgr is None or frame_bgr.size == 0:
+        return None
+    if frame_bgr.ndim == 2:
+        gray = frame_bgr.copy()
+    else:
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
+    ksize = int(gaussian_ksize)
+    if ksize < 1:
+        ksize = 1
+    if (ksize % 2) == 0:
+        ksize += 1
+    return cv2.GaussianBlur(gray, (ksize, ksize), float(gaussian_sigma))
+
+
+def _three_frame_diff_apply(gray_frame, state, high_threshold):
+    prev1 = state.get("prev1")
+    prev2 = state.get("prev2")
+
+    if prev1 is None:
+        state["prev1"] = gray_frame.copy()
+        return np.zeros_like(gray_frame)
+    if prev2 is None:
+        state["prev2"] = prev1.copy()
+        state["prev1"] = gray_frame.copy()
+        return np.zeros_like(gray_frame)
+
+    d1 = cv2.absdiff(prev2, prev1)
+    d2 = cv2.absdiff(prev1, gray_frame)
+    and_mask = cv2.bitwise_and(d1, d2)
+    _, high_mask = cv2.threshold(d1, int(high_threshold), 255, cv2.THRESH_BINARY)
+    combined = np.maximum(and_mask, high_mask)
+
+    state["prev2"] = prev1.copy()
+    state["prev1"] = gray_frame.copy()
+    return combined
+
+
+def _binarize_motion(motion_response, threshold_low, threshold_high):
+    _, weak = cv2.threshold(motion_response, int(threshold_low), 255, cv2.THRESH_BINARY)
+    if int(threshold_high) <= int(threshold_low):
+        return weak
+
+    _, strong = cv2.threshold(motion_response, int(threshold_high), 255, cv2.THRESH_BINARY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    strong_dilated = cv2.dilate(strong, kernel)
+    linked = cv2.bitwise_and(weak, strong_dilated)
+    return cv2.bitwise_or(linked, strong)
+
+
+def _apply_open(binary_mask, kernel_size, iterations):
+    ksize = int(kernel_size)
+    if ksize < 1:
+        ksize = 1
+    if (ksize % 2) == 0:
+        ksize += 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+    return cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel, iterations=max(1, int(iterations)))
+
+
+def _extract_candidates(binary_mask, gray_frame, motion_response):
+    candidates = []
+    num_labels, _, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8, ltype=cv2.CV_32S)
+    for label in range(1, num_labels):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area <= 0:
+            continue
+
+        x = int(stats[label, cv2.CC_STAT_LEFT])
+        y = int(stats[label, cv2.CC_STAT_TOP])
+        w = int(stats[label, cv2.CC_STAT_WIDTH])
+        h = int(stats[label, cv2.CC_STAT_HEIGHT])
+        if w <= 0 or h <= 0:
+            continue
+        if x < 0 or y < 0 or (x + w) > gray_frame.shape[1] or (y + h) > gray_frame.shape[0]:
+            continue
+
+        roi = (slice(y, y + h), slice(x, x + w))
+        gray_mean = float(np.mean(gray_frame[roi]) / 255.0)
+        motion_mean = float(np.mean(motion_response[roi]) / 255.0)
+
+        w_f = float(w)
+        h_f = float(max(1, h))
+        aspect_ratio = max(w_f / h_f, h_f / max(1.0, w_f))
+        circularity_proxy = min(w_f, h_f) / max(w_f, h_f)
+
+        candidates.append({
+            "bbox": (x, y, w, h),
+            "center": (float(centroids[label, 0]), float(centroids[label, 1])),
+            "area": area,
+            "motion_score": motion_mean,
+            "brightness": gray_mean,
+            "circularity": circularity_proxy,
+            "aspect_ratio": aspect_ratio,
+        })
+    return candidates
+
+
+def _filter_and_rank_candidates(candidates, motion_cfg, inference_cfg):
+    area_min = int(motion_cfg.get("area_min", 3))
+    area_max = int(motion_cfg.get("area_max", 120))
+    ratio_max = float(motion_cfg.get("ratio_max", 4.0))
+    max_candidates = min(
+        int(motion_cfg.get("max_candidates", 16)),
+        int(inference_cfg.get("max_candidates", 8)),
+    )
+
+    filtered = []
+    for c in candidates:
+        if c["area"] < area_min or c["area"] > area_max:
+            continue
+        if c["aspect_ratio"] > ratio_max:
+            continue
+        filtered.append(c)
+
+    filtered.sort(key=lambda item: (-item["area"], -item["brightness"]))
+    return filtered[: max(0, max_candidates)]
+
+
+def _crop_roi_batch(gray_frame, candidates, roi_cfg):
+    output_size = max(1, int(roi_cfg.get("output_size", 32)))
+    size_scale = float(roi_cfg.get("size_scale", 2.2))
+    min_crop = max(1, int(roi_cfg.get("min_crop", 20)))
+    max_crop = max(min_crop, int(roi_cfg.get("max_crop", 48)))
+
+    h, w = gray_frame.shape[:2]
+    patches = []
+    for candidate in candidates:
+        side_f = np.sqrt(float(max(1, candidate["area"]))) * size_scale
+        side = int(round(side_f))
+        side = int(np.clip(side, min_crop, max_crop))
+        half = max(1, side // 2)
+
+        cx, cy = candidate["center"]
+        x = int(cx) - half
+        y = int(cy) - half
+        x = max(0, min(x, w))
+        y = max(0, min(y, h))
+        rw = max(0, min(side, w - x))
+        rh = max(0, min(side, h - y))
+        if rw <= 0 or rh <= 0:
+            continue
+
+        roi = gray_frame[y:y + rh, x:x + rw]
+        patch = cv2.resize(roi, (output_size, output_size), interpolation=cv2.INTER_LINEAR)
+        patches.append(patch)
+    return patches
+
+
+def _run_detector_pipeline(frame_bgr, state, pipe_cfg):
+    motion_cfg = pipe_cfg["motion"]
+    roi_cfg = pipe_cfg["roi"]
+    inference_cfg = pipe_cfg["inference"]
+
+    gray = _to_gray_and_blur(
+        frame_bgr,
+        motion_cfg.get("gaussian_ksize", 3),
+        motion_cfg.get("gaussian_sigma", 0.8),
+    )
+    if gray is None:
+        return []
+
+    motion = _three_frame_diff_apply(gray, state, motion_cfg.get("diff_threshold_max", 35))
+    binary = _binarize_motion(
+        motion,
+        motion_cfg.get("diff_threshold_min", 10),
+        motion_cfg.get("diff_threshold", 18),
+    )
+    mask = _apply_open(
+        binary,
+        motion_cfg.get("morph_kernel", 3),
+        motion_cfg.get("morph_iters", 1),
+    )
+    candidates = _extract_candidates(mask, gray, motion)
+    candidates = _filter_and_rank_candidates(candidates, motion_cfg, inference_cfg)
+    return _crop_roi_batch(gray, candidates, roi_cfg)
+
+
+def _collect_sequences(source_root):
+    root = Path(source_root)
+    if not root.exists():
+        return []
+
+    if root.is_file():
+        suffix = root.suffix.lower()
+        if suffix in VIDEO_EXTENSIONS:
+            return [("video", root)]
+        if suffix in IMAGE_EXTENSIONS:
+            return [("images", [root])]
+        return []
+
+    sequences = []
+    for video_path in sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS):
+        sequences.append(("video", video_path))
+
+    image_paths = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS)
+    grouped = {}
+    for image_path in image_paths:
+        grouped.setdefault(image_path.parent, []).append(image_path)
+    for parent in sorted(grouped.keys()):
+        sequences.append(("images", grouped[parent]))
+    return sequences
+
+
+def _iter_frames(sequence):
+    kind, payload = sequence
+    if kind == "video":
+        cap = cv2.VideoCapture(str(payload))
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                yield frame
+        finally:
+            cap.release()
+        return
+
+    for image_path in payload:
+        frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if frame is not None:
+            yield frame
+
+
+def _ensure_dataset_layout(root_dir):
+    for cls in CLASS_NAMES:
+        os.makedirs(os.path.join(root_dir, cls), exist_ok=True)
+
+
+def _prepare_split_with_pipeline(raw_split_root, out_split_root, ds_cfg, pipe_cfg):
+    _ensure_dataset_layout(out_split_root)
+
+    frame_stride = max(1, int(ds_cfg.get("pipeline_frame_stride", 1)))
+    max_per_frame_pos = max(1, int(ds_cfg.get("pipeline_pos_max_per_frame", 16)))
+    max_per_frame_bg = max(1, int(ds_cfg.get("pipeline_bg_max_per_frame", 16)))
+    out_ext = str(ds_cfg.get("pipeline_output_ext", "png")).lower().lstrip(".")
+
+    counts = {cls: 0 for cls in CLASS_NAMES}
+    for cls in CLASS_NAMES:
+        class_raw_root = Path(raw_split_root) / cls
+        if not class_raw_root.exists():
+            print(f"Warning: raw class path not found, skip: {class_raw_root}")
+            continue
+
+        sequences = _collect_sequences(class_raw_root)
+        if not sequences:
+            print(f"Warning: no media found under {class_raw_root}")
+            continue
+
+        for seq_idx, sequence in enumerate(sequences):
+            state = {"prev1": None, "prev2": None}
+            for frame_idx, frame in enumerate(_iter_frames(sequence)):
+                if (frame_idx % frame_stride) != 0:
+                    continue
+
+                patches = _run_detector_pipeline(frame, state, pipe_cfg)
+                if not patches:
+                    continue
+
+                limit = max_per_frame_pos if cls == "projectile" else max_per_frame_bg
+                for patch_idx, patch in enumerate(patches[:limit]):
+                    filename = f"{cls}_s{seq_idx:04d}_f{frame_idx:06d}_p{patch_idx:02d}.{out_ext}"
+                    out_path = os.path.join(out_split_root, cls, filename)
+                    cv2.imwrite(out_path, patch)
+                    counts[cls] += 1
+
+    print(
+        f"[detector_pipeline] split={Path(out_split_root).name} "
+        f"projectile={counts['projectile']} background={counts['background']}"
+    )
+
+
+def _resolve_dataset_paths(cfg, prepare_with_pipeline):
+    ds_cfg = cfg.get("dataset", {})
+    train_path = resolve_project_path(ds_cfg.get("train_path", "train/dataset/train"))
+    val_path = resolve_project_path(ds_cfg.get("val_path", "train/dataset/val"))
+
+    if not bool(ds_cfg.get("use_detector_pipeline", False)):
+        return train_path, val_path
+
+    raw_train_root = resolve_project_path(ds_cfg.get("raw_train_path", "train/dataset_raw/train"))
+    raw_val_root = resolve_project_path(ds_cfg.get("raw_val_path", "train/dataset_raw/val"))
+    processed_root = resolve_project_path(ds_cfg.get("processed_path", "train/dataset"))
+    train_path = os.path.join(processed_root, "train")
+    val_path = os.path.join(processed_root, "val")
+
+    if prepare_with_pipeline:
+        if not os.path.isdir(raw_train_root):
+            raise FileNotFoundError(
+                f"dataset.use_detector_pipeline=1, but raw_train_path not found: {raw_train_root}"
+            )
+        if not os.path.isdir(raw_val_root):
+            raise FileNotFoundError(
+                f"dataset.use_detector_pipeline=1, but raw_val_path not found: {raw_val_root}"
+            )
+
+        if bool(ds_cfg.get("overwrite_processed", False)) and os.path.isdir(processed_root):
+            shutil.rmtree(processed_root)
+
+        pipe_cfg = _load_detector_pipeline_cfg(cfg)
+        _prepare_split_with_pipeline(raw_train_root, train_path, ds_cfg, pipe_cfg)
+        _prepare_split_with_pipeline(raw_val_root, val_path, ds_cfg, pipe_cfg)
+
+    return train_path, val_path
+
+
 # ======================
 # 1. Tiny CNN模型（低占用）
 # ======================
@@ -78,8 +440,6 @@ class Augmentor:
         self.motion_cfg = aug_cfg.get("motion_blur", {})
         self.noise_cfg = aug_cfg.get("gaussian_noise", {})
         self.brightness_cfg = aug_cfg.get("brightness", {})
-        self.flip_cfg = aug_cfg.get("random_flip", {})
-        self.rotate_cfg = aug_cfg.get("random_rotate", {})
 
     @staticmethod
     def add_motion_blur(img, kernel_sizes):
@@ -121,36 +481,6 @@ class Augmentor:
                 vmin = float(self.brightness_cfg.get("min", 0.7))
                 vmax = float(self.brightness_cfg.get("max", 1.3))
                 img = self.random_brightness(img, vmin, vmax)
-
-        if self.flip_cfg.get("enable", False):
-            if random.random() < float(self.flip_cfg.get("prob", 0.5)):
-                use_h = bool(self.flip_cfg.get("horizontal", True))
-                use_v = bool(self.flip_cfg.get("vertical", False))
-                if use_h and use_v:
-                    flip_code = -1
-                elif use_h:
-                    flip_code = 1
-                elif use_v:
-                    flip_code = 0
-                else:
-                    flip_code = None
-                if flip_code is not None:
-                    img = cv2.flip(img, flip_code)
-
-        if self.rotate_cfg.get("enable", False):
-            if random.random() < float(self.rotate_cfg.get("prob", 0.5)):
-                min_angle = float(self.rotate_cfg.get("min", -3.0))
-                max_angle = float(self.rotate_cfg.get("max", 3.0))
-                angle = random.uniform(min_angle, max_angle)
-                h, w = img.shape[:2]
-                matrix = cv2.getRotationMatrix2D((w * 0.5, h * 0.5), angle, 1.0)
-                img = cv2.warpAffine(
-                    img,
-                    matrix,
-                    (w, h),
-                    flags=cv2.INTER_LINEAR,
-                    borderMode=cv2.BORDER_REFLECT_101,
-                )
 
         return img
 
@@ -461,8 +791,7 @@ def train(cfg):
     if num_classes != 1:
         raise ValueError("This script is for binary classification only, so model.num_classes must be 1.")
 
-    train_path = resolve_project_path(ds_cfg.get("train_path", "train/dataset/train"))
-    val_path = resolve_project_path(ds_cfg.get("val_path", "train/dataset/val"))
+    train_path, val_path = _resolve_dataset_paths(cfg, prepare_with_pipeline=True)
     shuffle = bool(ds_cfg.get("shuffle", True))
 
     batch_size = int(train_cfg.get("batch_size", 64))
@@ -470,7 +799,10 @@ def train(cfg):
     num_workers = int(train_cfg.get("num_workers", 0))
     weights_path = resolve_project_path(train_cfg.get("weights_path", "model/pellet_cls.pth"))
 
-    augmentor = Augmentor(cfg.get("augmentation", {}))
+    aug_cfg = dict(cfg.get("augmentation", {}))
+    if bool(ds_cfg.get("use_detector_pipeline", False)) and not bool(ds_cfg.get("keep_augmentation_after_pipeline", False)):
+        aug_cfg["enable"] = False
+    augmentor = Augmentor(aug_cfg)
     normalization_cfg = cfg.get("normalization", {})
 
     train_dataset = ProjectileDataset(
@@ -660,7 +992,7 @@ def parse_args():
     parser.add_argument(
         "--mode",
         default="all",
-        choices=["train", "export", "infer", "all"],
+        choices=["prepare", "train", "export", "infer", "all"],
         help="Run mode.",
     )
     parser.add_argument("--image", default="", help="Image path for infer mode.")
@@ -676,6 +1008,10 @@ if __name__ == "__main__":
     if not config_path.is_absolute():
         config_path = PROJECT_ROOT / config_path
     cfg = load_config(str(config_path))
+
+    if args.mode in ("prepare",):
+        train_path, val_path = _resolve_dataset_paths(cfg, prepare_with_pipeline=True)
+        print(f"Dataset prepared by detector pipeline.\n  train: {train_path}\n  val:   {val_path}")
 
     if args.mode in ("train", "all"):
         train(cfg)

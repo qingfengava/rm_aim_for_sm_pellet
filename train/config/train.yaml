@@ -35,6 +35,16 @@ dataset:
   train_path: "train/dataset/train"
   val_path: "train/dataset/val"
   shuffle: true
+  use_detector_pipeline: true
+  raw_train_path: "train/dataset_raw/train"
+  raw_val_path: "train/dataset_raw/val"
+  processed_path: "train/dataset"
+  overwrite_processed: true
+  pipeline_frame_stride: 1
+  pipeline_pos_max_per_frame: 16
+  pipeline_bg_max_per_frame: 16
+  pipeline_output_ext: "png"
+  keep_augmentation_after_pipeline: false
 
 augmentation:
   enable: true
