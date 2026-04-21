@@ -1,0 +1,48 @@
+camera:
+  source: "0"
+  width: 640
+  height: 480
+  fps: 120
+  set_manual_exposure: 0
+  exposure: -6
+
+motion:
+  gaussian_ksize: 3
+  gaussian_sigma: 0.8
+  adaptive_threshold: 1
+  diff_threshold: 18
+  diff_threshold_min: 10
+  diff_threshold_max: 35
+  morph_kernel: 3
+  morph_iters: 1
+  area_min: 3
+  area_max: 120
+  ratio_max: 4.0
+  extent_min: 0.2
+  max_candidates: 16
+
+roi:
+  output_size: 32
+  size_scale: 2.2
+  min_crop: 20
+  max_crop: 48
+
+inference:
+  backend: "mock"
+  model_path: "model/pellet_cls.onnx"
+  device: "CPU"
+  input_blob_name: "input"
+  output_blob_name: "output"
+  trt_engine_path: "model/pellet_cls.engine"
+  openvino_model_path: "model/pellet_cls.xml"
+  ncnn_param_path: "model/pellet_cls.param"
+  ncnn_bin_path: "model/pellet_cls.bin"
+  num_threads: 1
+  use_fp16: 0
+  positive_threshold: 0.75
+  weak_threshold: 0.45
+  max_candidates: 8
+
+debug:
+  show_window: 0
+  show_mask: 0
