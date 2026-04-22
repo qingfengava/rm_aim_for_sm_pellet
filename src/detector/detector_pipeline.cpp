@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <iostream>
 #include <vector>
 
 #include <opencv2/core/types.hpp>
@@ -9,6 +11,7 @@
 #include "pellet/imgprocess/binarizer.h"
 #include "pellet/imgprocess/candidate_extractor.h"
 #include "pellet/imgprocess/candidate_filter.h"
+#include "pellet/imgprocess/candidate_nms.h"
 #include "pellet/imgprocess/morphology.h"
 #include "pellet/imgprocess/preprocess.h"
 #include "pellet/imgprocess/roi_cropper.h"
@@ -23,11 +26,16 @@ std::string ToLower(std::string text) {
   return text;
 }
 
+constexpr int kMaxPreNmsCandidates = 20;
+
 }  // namespace
 
 DetectorPipeline::DetectorPipeline(PelletConfig config, std::shared_ptr<infer::IClassifier> classifier)
     : config_(std::move(config)), classifier_(std::move(classifier)) {}
 
+
+//pipline:  preprocess -> three_frame_diff -> morphology ->  
+//  candidate extract -> filter & rank -> nms -> topk -> classifier
 std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
   std::vector<Detection> detections;
   if (frame.frame_bgr.empty()) {
@@ -72,10 +80,40 @@ std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
   filter_cfg.area_min = config_.motion.area_min;
   filter_cfg.area_max = config_.motion.area_max;
   filter_cfg.aspect_ratio_max = config_.motion.ratio_max;
-  filter_cfg.max_candidates = std::min(config_.motion.max_candidates, config_.inference.max_candidates);
+  filter_cfg.extent_min = config_.motion.extent_min;
+  filter_cfg.contrast_min = config_.motion.contrast_min;
+  filter_cfg.motion_score_min = config_.motion.motion_score_min;
+  filter_cfg.max_candidates = std::clamp(config_.motion.max_candidates, 0, kMaxPreNmsCandidates);
 
-  const std::vector<imgprocess::Candidate> candidates =
+  const std::vector<imgprocess::Candidate> filtered_candidates =
       imgprocess::FilterAndRankCandidates(raw_candidates, filter_cfg);
+
+  std::vector<imgprocess::Candidate> nms_candidates = filtered_candidates;
+  if (config_.motion.nms_enable) {
+    const float nms_iou = std::clamp(config_.motion.nms_iou, 0.0F, 1.0F);
+    nms_candidates = imgprocess::ApplyNms(filtered_candidates, nms_iou);
+  }
+
+  std::vector<imgprocess::Candidate> topk_candidates = nms_candidates;
+  const std::size_t post_nms_topk = static_cast<std::size_t>(std::max(0, config_.inference.max_candidates));
+  if (topk_candidates.size() > post_nms_topk) {
+    topk_candidates.resize(post_nms_topk);
+  }
+
+  if (config_.debug.show_pipeline_stats) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!stats_log_initialized_ ||
+        (now - last_stats_log_tp_) >= std::chrono::seconds(1)) {
+      std::cout
+          << "[pipeline] candidates raw=" << raw_candidates.size()
+          << " -> filtered=" << filtered_candidates.size()
+          << " -> nms=" << nms_candidates.size()
+          << " -> topk=" << topk_candidates.size()
+          << "\n";
+      last_stats_log_tp_ = now;
+      stats_log_initialized_ = true;
+    }
+  }
 
   imgprocess::RoiCropConfig roi_cfg;
   roi_cfg.output_size = config_.roi.output_size;
@@ -83,7 +121,7 @@ std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
   roi_cfg.min_crop = config_.roi.min_crop;
   roi_cfg.max_crop = config_.roi.max_crop;
 
-  const imgprocess::RoiBatch batch = imgprocess::CropRoiBatch(gray, candidates, roi_cfg);
+  const imgprocess::RoiBatch batch = imgprocess::CropRoiBatch(gray, topk_candidates, roi_cfg);
   if (batch.patches.empty()) {
     return detections;
   }

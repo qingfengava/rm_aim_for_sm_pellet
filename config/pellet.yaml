@@ -15,7 +15,7 @@ motion:
   diff_threshold_min: 10
   diff_threshold_max: 35
 
-  morph_enable: 0
+  morph_enable: 1
   morph_type: "open"
   morph_kernel: 3
   morph_iters: 1
@@ -24,7 +24,11 @@ motion:
   area_max: 120
   ratio_max: 4.0
   extent_min: 0.2
-  max_candidates: 16
+  contrast_min: 0.06
+  motion_score_min: 0.08
+  nms_enable: 1
+  nms_iou: 0.25
+  max_candidates: 20 #pre-nms
 
 roi:
   output_size: 32
@@ -46,9 +50,10 @@ inference:
   use_fp16: 0
   positive_threshold: 0.75
   weak_threshold: 0.45
-  max_candidates: 8
+  max_candidates: 10 #post-nms
 
 debug:
   show_window: 0
   show_mask: 0
   show_morphology: 0
+  show_pipeline_stats: 0

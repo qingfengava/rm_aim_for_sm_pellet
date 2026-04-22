@@ -69,12 +69,19 @@ def _load_detector_pipeline_cfg(cfg):
             "diff_threshold": 18,
             "diff_threshold_min": 10,
             "diff_threshold_max": 35,
+            "morph_enable": False,
+            "morph_type": "open",
             "morph_kernel": 3,
             "morph_iters": 1,
             "area_min": 3,
             "area_max": 120,
             "ratio_max": 4.0,
-            "max_candidates": 16,
+            "extent_min": 0.2,
+            "contrast_min": 0.06,
+            "motion_score_min": 0.08,
+            "nms_enable": True,
+            "nms_iou": 0.25,
+            "max_candidates": 20,  # pre-NMS
         },
         "roi": {
             "output_size": int(cfg.get("model", {}).get("input_size", 32)),
@@ -83,7 +90,7 @@ def _load_detector_pipeline_cfg(cfg):
             "max_crop": 48,
         },
         "inference": {
-            "max_candidates": 8,
+            "max_candidates": 10,  # final Top-K (post-NMS)
         },
     }
 
@@ -155,21 +162,210 @@ def _binarize_motion(motion_response, threshold_low, threshold_high):
     return cv2.bitwise_or(linked, strong)
 
 
-def _apply_open(binary_mask, kernel_size, iterations):
+def _to_single_channel_u8(src):
+    if src is None or src.size == 0:
+        return None
+    if src.ndim == 2:
+        gray = src
+    else:
+        gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+    if gray.dtype == np.uint8:
+        return gray
+    return np.clip(gray, 0, 255).astype(np.uint8)
+
+
+def _normalize_to_binary_mask(mask):
+    mask_u8 = _to_single_channel_u8(mask)
+    if mask_u8 is None:
+        return None
+    _, mask_bin = cv2.threshold(mask_u8, 0, 255, cv2.THRESH_BINARY)
+    return mask_bin
+
+
+def _build_morph_kernel(kernel_size):
     ksize = int(kernel_size)
     if ksize < 1:
         ksize = 1
     if (ksize % 2) == 0:
         ksize += 1
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-    return cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel, iterations=max(1, int(iterations)))
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+
+
+def _analyze_mask(mask_bin):
+    stats_out = {"nonzero": 0, "components": 0, "largest_component_area": 0}
+    if mask_bin is None or mask_bin.size == 0:
+        return stats_out
+
+    nonzero = int(cv2.countNonZero(mask_bin))
+    stats_out["nonzero"] = nonzero
+    if nonzero <= 0:
+        return stats_out
+
+    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(mask_bin, connectivity=8, ltype=cv2.CV_32S)
+    stats_out["components"] = max(0, int(num_labels - 1))
+    largest = 0
+    for label in range(1, num_labels):
+        largest = max(largest, int(stats[label, cv2.CC_STAT_AREA]))
+    stats_out["largest_component_area"] = largest
+    return stats_out
+
+
+def _apply_open(binary_mask, kernel_size, iterations):
+    mask_bin = _normalize_to_binary_mask(binary_mask)
+    if mask_bin is None:
+        return None
+
+    iters = max(0, int(iterations))
+    if iters == 0:
+        return mask_bin
+
+    kernel = _build_morph_kernel(kernel_size)
+    eroded = cv2.erode(mask_bin, kernel, iterations=iters)
+    opened = cv2.dilate(eroded, kernel, iterations=iters)
+    _, opened = cv2.threshold(opened, 0, 255, cv2.THRESH_BINARY)
+
+    before_nonzero = int(cv2.countNonZero(mask_bin))
+    if before_nonzero > 0:
+        after_nonzero = int(cv2.countNonZero(opened))
+        keep_ratio = float(after_nonzero) / float(before_nonzero)
+        if keep_ratio < 0.35:
+            return mask_bin
+    return opened
+
+
+def _apply_close(binary_mask, kernel_size, iterations):
+    mask_bin = _normalize_to_binary_mask(binary_mask)
+    if mask_bin is None:
+        return None
+
+    iters = max(0, int(iterations))
+    if iters == 0:
+        return mask_bin
+
+    kernel = _build_morph_kernel(kernel_size)
+    dilated = cv2.dilate(mask_bin, kernel, iterations=iters)
+    closed = cv2.erode(dilated, kernel, iterations=iters)
+    _, closed = cv2.threshold(closed, 0, 255, cv2.THRESH_BINARY)
+
+    before = _analyze_mask(mask_bin)
+    if before["nonzero"] <= 0:
+        return closed
+    after = _analyze_mask(closed)
+
+    r_fg = float(after["nonzero"]) / float(before["nonzero"])
+    r_cand = float(after["components"]) / float(max(1, before["components"]))
+    r_largest = float(after["largest_component_area"]) / float(max(1, after["nonzero"]))
+
+    fallback = (
+        (r_fg > 2.0)
+        or (r_largest > 0.7)
+        or ((r_cand < 0.5) and (r_fg > 1.4))
+    )
+    if fallback:
+        return mask_bin
+    return closed
+
+
+def _compute_ring_background_mean(gray_u8, binary_mask_u8, bbox):
+    if gray_u8 is None or binary_mask_u8 is None:
+        return 0.0
+
+    x, y, w, h = bbox
+    max_side = max(w, h)
+    pad = max(2, int(round(float(max_side) * 0.5)))
+
+    frame_h, frame_w = gray_u8.shape[:2]
+    x0 = max(0, x - pad)
+    y0 = max(0, y - pad)
+    x1 = min(frame_w, x + w + pad)
+    y1 = min(frame_h, y + h + pad)
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+
+    sum_bg = 0.0
+    count_bg = 0
+    bbox_x2 = x + w
+    bbox_y2 = y + h
+    for yy in range(y0, y1):
+        gray_row = gray_u8[yy]
+        mask_row = binary_mask_u8[yy]
+        for xx in range(x0, x1):
+            in_bbox = (xx >= x) and (xx < bbox_x2) and (yy >= y) and (yy < bbox_y2)
+            if in_bbox:
+                continue
+            if mask_row[xx] != 0:
+                continue
+            sum_bg += float(gray_row[xx])
+            count_bg += 1
+
+    if count_bg < 16:
+        return -1.0
+    return sum_bg / float(count_bg)
+
+
+def _compute_rank_score(motion_score, local_contrast, extent, circularity):
+    motion_term = float(np.clip(motion_score, 0.0, 1.0))
+    contrast_term = float(np.clip(local_contrast, 0.0, 1.0))
+    extent_term = float(np.clip(extent, 0.0, 1.0))
+    circularity_term = float(np.clip(circularity, 0.0, 1.0))
+    return (
+        0.45 * motion_term
+        + 0.35 * contrast_term
+        + 0.10 * extent_term
+        + 0.10 * circularity_term
+    )
 
 
 def _extract_candidates(binary_mask, gray_frame, motion_response):
+    gray_u8 = _to_single_channel_u8(gray_frame)
+    motion_u8 = _to_single_channel_u8(motion_response)
+    mask_u8 = _normalize_to_binary_mask(binary_mask)
+    if gray_u8 is None or motion_u8 is None or mask_u8 is None:
+        return []
+    if gray_u8.shape != motion_u8.shape or gray_u8.shape != mask_u8.shape:
+        return []
+
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_u8, connectivity=8, ltype=cv2.CV_32S)
+    if num_labels <= 1:
+        return []
+
+    acc = [
+        {
+            "area": 0,
+            "sum_gray": 0.0,
+            "sum_motion": 0.0,
+            "sum_w": 0.0,
+            "sum_wx": 0.0,
+            "sum_wy": 0.0,
+        }
+        for _ in range(num_labels)
+    ]
+
+    for y in range(labels.shape[0]):
+        label_row = labels[y]
+        gray_row = gray_u8[y]
+        motion_row = motion_u8[y]
+        for x in range(labels.shape[1]):
+            label = int(label_row[x])
+            if label <= 0:
+                continue
+            a = acc[label]
+            gray_value = float(gray_row[x])
+            motion_value = float(motion_row[x])
+            w = motion_value + 1.0
+
+            a["area"] += 1
+            a["sum_gray"] += gray_value
+            a["sum_motion"] += motion_value
+            a["sum_w"] += w
+            a["sum_wx"] += w * float(x)
+            a["sum_wy"] += w * float(y)
+
     candidates = []
-    num_labels, _, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8, ltype=cv2.CV_32S)
+    frame_h, frame_w = gray_u8.shape[:2]
     for label in range(1, num_labels):
-        area = int(stats[label, cv2.CC_STAT_AREA])
+        a = acc[label]
+        area = int(a["area"])
         if area <= 0:
             continue
 
@@ -179,38 +375,63 @@ def _extract_candidates(binary_mask, gray_frame, motion_response):
         h = int(stats[label, cv2.CC_STAT_HEIGHT])
         if w <= 0 or h <= 0:
             continue
-        if x < 0 or y < 0 or (x + w) > gray_frame.shape[1] or (y + h) > gray_frame.shape[0]:
+        if x < 0 or y < 0 or (x + w) > frame_w or (y + h) > frame_h:
             continue
 
-        roi = (slice(y, y + h), slice(x, x + w))
-        gray_mean = float(np.mean(gray_frame[roi]) / 255.0)
-        motion_mean = float(np.mean(motion_response[roi]) / 255.0)
+        geom_cx = float(centroids[label, 0])
+        geom_cy = float(centroids[label, 1])
+        sum_w = float(a["sum_w"])
+        if sum_w > 1e-6:
+            cx = float(a["sum_wx"] / sum_w)
+            cy = float(a["sum_wy"] / sum_w)
+        else:
+            cx = geom_cx
+            cy = geom_cy
+
+        mean_fg = float(a["sum_gray"] / float(area))
+        mean_bg_raw = _compute_ring_background_mean(gray_u8, mask_u8, (x, y, w, h))
+        mean_bg = mean_bg_raw if mean_bg_raw >= 0.0 else mean_fg
+
+        brightness = float(mean_fg / 255.0)
+        motion_score = float(a["sum_motion"] / (255.0 * float(area)))
+        local_contrast = float((mean_fg - mean_bg) / 255.0)
 
         w_f = float(w)
         h_f = float(max(1, h))
         aspect_ratio = max(w_f / h_f, h_f / max(1.0, w_f))
         circularity_proxy = min(w_f, h_f) / max(w_f, h_f)
+        extent = float(float(area) / float(max(1, w * h)))
+        rank_score = _compute_rank_score(
+            motion_score,
+            local_contrast,
+            extent,
+            circularity_proxy,
+        )
 
         candidates.append({
             "bbox": (x, y, w, h),
-            "center": (float(centroids[label, 0]), float(centroids[label, 1])),
+            "center": (cx, cy),
             "area": area,
-            "motion_score": motion_mean,
-            "brightness": gray_mean,
+            "motion_score": motion_score,
+            "brightness": brightness,
             "circularity": circularity_proxy,
             "aspect_ratio": aspect_ratio,
+            "extent": extent,
+            "local_contrast": local_contrast,
+            "rank_score": rank_score,
         })
     return candidates
 
 
-def _filter_and_rank_candidates(candidates, motion_cfg, inference_cfg):
+def _filter_and_rank_candidates(candidates, motion_cfg):
     area_min = int(motion_cfg.get("area_min", 3))
     area_max = int(motion_cfg.get("area_max", 120))
     ratio_max = float(motion_cfg.get("ratio_max", 4.0))
-    max_candidates = min(
-        int(motion_cfg.get("max_candidates", 16)),
-        int(inference_cfg.get("max_candidates", 8)),
-    )
+    extent_min = float(motion_cfg.get("extent_min", 0.0))
+    contrast_min = float(motion_cfg.get("contrast_min", 0.0))
+    motion_score_min = float(motion_cfg.get("motion_score_min", 0.0))
+    min_circularity = float(motion_cfg.get("min_circularity", 0.0))
+    max_candidates = int(motion_cfg.get("max_candidates", 20))  # pre-NMS limit
 
     filtered = []
     for c in candidates:
@@ -218,10 +439,73 @@ def _filter_and_rank_candidates(candidates, motion_cfg, inference_cfg):
             continue
         if c["aspect_ratio"] > ratio_max:
             continue
+        if c["extent"] < extent_min:
+            continue
+        if c["local_contrast"] < contrast_min:
+            continue
+        if c["motion_score"] < motion_score_min:
+            continue
+        if c["circularity"] < min_circularity:
+            continue
         filtered.append(c)
 
-    filtered.sort(key=lambda item: (-item["area"], -item["brightness"]))
+    filtered.sort(key=lambda item: (-item["rank_score"], -item["area"], -item["brightness"]))
     return filtered[: max(0, max_candidates)]
+
+
+def _compute_iou(bbox_a, bbox_b):
+    ax, ay, aw, ah = bbox_a
+    bx, by, bw, bh = bbox_b
+    ax2, ay2 = ax + aw, ay + ah
+    bx2, by2 = bx + bw, by + bh
+
+    ix1 = max(ax, bx)
+    iy1 = max(ay, by)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    inter_w = max(0, ix2 - ix1)
+    inter_h = max(0, iy2 - iy1)
+    if inter_w <= 0 or inter_h <= 0:
+        return 0.0
+
+    inter_area = float(inter_w * inter_h)
+    area_a = float(max(0, aw) * max(0, ah))
+    area_b = float(max(0, bw) * max(0, bh))
+    union_area = area_a + area_b - inter_area
+    if union_area <= 0.0:
+        return 0.0
+    return inter_area / union_area
+
+
+def _apply_nms(candidates, iou_thresh):
+    if not candidates:
+        return []
+
+    iou_threshold = float(np.clip(iou_thresh, 0.0, 1.0))
+    order = sorted(
+        range(len(candidates)),
+        key=lambda idx: (
+            -candidates[idx]["rank_score"],
+            -candidates[idx]["area"],
+            -candidates[idx]["brightness"],
+        ),
+    )
+
+    suppressed = [False] * len(candidates)
+    kept = []
+    for i, current_idx in enumerate(order):
+        if suppressed[current_idx]:
+            continue
+        current = candidates[current_idx]
+        kept.append(current)
+        for j in range(i + 1, len(order)):
+            other_idx = order[j]
+            if suppressed[other_idx]:
+                continue
+            iou = _compute_iou(current["bbox"], candidates[other_idx]["bbox"])
+            if iou > iou_threshold:
+                suppressed[other_idx] = True
+    return kept
 
 
 def _crop_roi_batch(gray_frame, candidates, roi_cfg):
@@ -273,14 +557,36 @@ def _run_detector_pipeline(frame_bgr, state, pipe_cfg):
         motion_cfg.get("diff_threshold_min", 10),
         motion_cfg.get("diff_threshold", 18),
     )
-    mask = _apply_open(
-        binary,
-        motion_cfg.get("morph_kernel", 3),
-        motion_cfg.get("morph_iters", 1),
-    )
-    candidates = _extract_candidates(mask, gray, motion)
-    candidates = _filter_and_rank_candidates(candidates, motion_cfg, inference_cfg)
-    return _crop_roi_batch(gray, candidates, roi_cfg)
+    mask = binary
+    if bool(motion_cfg.get("morph_enable", False)):
+        morph_type = str(motion_cfg.get("morph_type", "open")).lower()
+        if morph_type == "open":
+            opened = _apply_open(
+                binary,
+                motion_cfg.get("morph_kernel", 3),
+                motion_cfg.get("morph_iters", 1),
+            )
+            if opened is not None:
+                mask = opened
+        elif morph_type == "close":
+            closed = _apply_close(
+                binary,
+                motion_cfg.get("morph_kernel", 3),
+                motion_cfg.get("morph_iters", 1),
+            )
+            if closed is not None:
+                mask = closed
+
+    raw_candidates = _extract_candidates(mask, gray, motion)
+    filtered_candidates = _filter_and_rank_candidates(raw_candidates, motion_cfg)
+
+    nms_candidates = filtered_candidates
+    if bool(motion_cfg.get("nms_enable", True)):
+        nms_candidates = _apply_nms(filtered_candidates, motion_cfg.get("nms_iou", 0.25))
+
+    post_nms_topk = max(0, int(inference_cfg.get("max_candidates", 10)))
+    topk_candidates = nms_candidates[:post_nms_topk]
+    return _crop_roi_batch(gray, topk_candidates, roi_cfg)
 
 
 def _collect_sequences(source_root):

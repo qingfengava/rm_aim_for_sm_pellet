@@ -29,7 +29,11 @@ struct MotionConfig {
   int area_max{120};
   float ratio_max{4.0F};
   float extent_min{0.2F};
-  int max_candidates{16};
+  float contrast_min{0.06F};
+  float motion_score_min{0.08F};
+  bool nms_enable{true};
+  float nms_iou{0.25F};
+  int max_candidates{20};
 };
 
 struct RoiConfig {
@@ -53,13 +57,14 @@ struct InferenceConfig {
   bool use_fp16{false};
   float positive_threshold{0.75F};
   float weak_threshold{0.45F};
-  int max_candidates{8};
+  int max_candidates{10};
 };
 
 struct DebugConfig {
   bool show_window{false};
   bool show_mask{false};
   bool show_morphology{false};
+  bool show_pipeline_stats{false};
 };
 
 struct PelletConfig {

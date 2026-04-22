@@ -95,15 +95,29 @@ python3 tools/export_model.py
 - `tools`：基准测试与模型导出等工具程序/脚本。
 - `scripts`：运行与性能分析辅助脚本。
 
+## 检测流程（当前实现）
 
-Camera
-→ 灰度 + 轻量去噪(3x3 Gaussian)
-→ 三帧差（D = (D1 & D2) | (D1 > T_high)） + 自适应双阈值(T_low/T_high)
-→ 二值掩码(滞回阈值，而不是单阈值)（类似canny）
-→ 形态学(优先 close；open 仅在噪点多时启用)（现改为可选项，怀疑容易筛调真目标）
-→ 连通域 提取+ 几何/光度过滤（候选筛选里加 长宽比/extent/局部对比度，比只看面积和圆形度更抗反光误检。）
-→ 候选去重(NMS) （降低推理占用）+ Top-K(建议 8~12)（限制最大候选数（≤20））
-→ ROI裁剪(32x32，按运动质心居中)（动态裁减，后输入网络统一缩放为32x32）
-→ Tiny CNN(INT8量化，批量推理)
-→ 置信度双阈值 + 2/3帧短时投票（减少抖动）
-→ 输出 (frame_id, timestamp, center, bbox, score)
+Camera  
+→ 灰度 + Gaussian  
+→ 三帧差（`D = (D1 & D2) | (D1 > T_high)`）  
+→ 二值化  
+→ 形态学（`open/close` 可配置）  
+→ 连通域提取  
+→ 候选过滤（面积、长宽比、`extent`、`local_contrast`、`motion_score`）  
+→ **Pre-NMS 限流**（`motion.max_candidates`，工程上限制为 `<=20`）  
+→ 候选去重 NMS（可开关，IoU 可配置）  
+→ **Final Top-K**（`inference.max_candidates`，建议 `8~12`）  
+→ ROI 裁剪并缩放到 `32x32`  
+→ Tiny CNN 二分类  
+→ 输出 `(frame_id, timestamp_ms, center, bbox, score)`
+
+## 关键参数说明（config/pellet.yaml）
+
+- `motion.max_candidates`：Pre-NMS 候选上限（`<=20`）。
+- `inference.max_candidates`：Final Top-K 上限（NMS 后再截断，建议 `8~12`）。
+- `motion.contrast_min`：候选局部对比度下限，抑制反光类误检。
+- `motion.motion_score_min`：候选运动强度下限，抑制静态噪点。
+- `motion.nms_enable`：是否启用 NMS（`0/1`）。
+- `motion.nms_iou`：NMS IoU 阈值（常用 `0.2~0.3`，默认 `0.25`）。
+
+说明：`motion.max_candidates` 与 `inference.max_candidates` 语义分离，前者用于 NMS 之前控制计算量，后者用于 NMS 之后控制最终送入 ROI/CNN 的数量。

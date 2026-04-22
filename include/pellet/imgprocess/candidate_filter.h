@@ -10,6 +10,9 @@ struct CandidateFilterConfig {
   int area_min{3};
   int area_max{120};
   float aspect_ratio_max{4.0F};
+  float extent_min{0.0F};
+  float contrast_min{0.0F};
+  float motion_score_min{0.0F};
   float min_circularity{0.0F};
   int max_candidates{16};
 };

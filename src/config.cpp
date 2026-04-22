@@ -61,6 +61,10 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
     ReadIfPresent(motion, "area_max", &config->motion.area_max);
     ReadIfPresent(motion, "ratio_max", &config->motion.ratio_max);
     ReadIfPresent(motion, "extent_min", &config->motion.extent_min);
+    ReadIfPresent(motion, "contrast_min", &config->motion.contrast_min);
+    ReadIfPresent(motion, "motion_score_min", &config->motion.motion_score_min);
+    ReadBoolIfPresent(motion, "nms_enable", &config->motion.nms_enable);
+    ReadIfPresent(motion, "nms_iou", &config->motion.nms_iou);
     ReadIfPresent(motion, "max_candidates", &config->motion.max_candidates);
   }
 
@@ -95,6 +99,7 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
     ReadBoolIfPresent(debug, "show_window", &config->debug.show_window);
     ReadBoolIfPresent(debug, "show_mask", &config->debug.show_mask);
     ReadBoolIfPresent(debug, "show_morphology", &config->debug.show_morphology);
+    ReadBoolIfPresent(debug, "show_pipeline_stats", &config->debug.show_pipeline_stats);
   }
 
   return true;

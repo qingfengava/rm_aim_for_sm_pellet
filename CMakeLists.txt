@@ -31,6 +31,7 @@ set(PELLET_CORE_SOURCES
     src/imgprocess/morphology.cpp
     src/imgprocess/candidate_extractor.cpp
     src/imgprocess/candidate_filter.cpp
+    src/imgprocess/candidate_nms.cpp
     src/imgprocess/roi_cropper.cpp
     src/infer/onnx_classifier.cpp
     src/infer/mock_classifier.cpp
@@ -183,6 +184,14 @@ if(BUILD_TESTING)
         add_executable(test_candidate_filter tests/unit/test_candidate_filter.cpp)
         target_link_libraries(test_candidate_filter PRIVATE pellet_core GTest::gtest_main)
         add_test(NAME test_candidate_filter COMMAND test_candidate_filter)
+
+        add_executable(test_candidate_extractor tests/unit/test_candidate_extractor.cpp)
+        target_link_libraries(test_candidate_extractor PRIVATE pellet_core GTest::gtest_main)
+        add_test(NAME test_candidate_extractor COMMAND test_candidate_extractor)
+
+        add_executable(test_candidate_nms tests/unit/test_candidate_nms.cpp)
+        target_link_libraries(test_candidate_nms PRIVATE pellet_core GTest::gtest_main)
+        add_test(NAME test_candidate_nms COMMAND test_candidate_nms)
 
         add_executable(test_roi_cropper tests/unit/test_roi_cropper.cpp)
         target_link_libraries(test_roi_cropper PRIVATE pellet_core GTest::gtest_main)

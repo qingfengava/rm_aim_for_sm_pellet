@@ -15,6 +15,9 @@ struct Candidate {
   float brightness{0.0F};
   float circularity{0.0F};
   float aspect_ratio{1.0F};
+  float extent{0.0F};
+  float local_contrast{0.0F};
+  float rank_score{0.0F};
 };
 
 std::vector<Candidate> ExtractCandidates(
