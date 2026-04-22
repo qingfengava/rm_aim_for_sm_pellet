@@ -53,6 +53,8 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
     ReadIfPresent(motion, "diff_threshold", &config->motion.diff_threshold);
     ReadIfPresent(motion, "diff_threshold_min", &config->motion.diff_threshold_min);
     ReadIfPresent(motion, "diff_threshold_max", &config->motion.diff_threshold_max);
+    ReadBoolIfPresent(motion, "morph_enable", &config->motion.morph_enable);
+    ReadIfPresent(motion, "morph_type", &config->motion.morph_type);
     ReadIfPresent(motion, "morph_kernel", &config->motion.morph_kernel);
     ReadIfPresent(motion, "morph_iters", &config->motion.morph_iters);
     ReadIfPresent(motion, "area_min", &config->motion.area_min);
@@ -92,6 +94,7 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
   if (!debug.empty()) {
     ReadBoolIfPresent(debug, "show_window", &config->debug.show_window);
     ReadBoolIfPresent(debug, "show_mask", &config->debug.show_mask);
+    ReadBoolIfPresent(debug, "show_morphology", &config->debug.show_morphology);
   }
 
   return true;

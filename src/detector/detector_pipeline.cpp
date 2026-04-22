@@ -1,6 +1,7 @@
 #include "pellet/detector/detector_pipeline.h"
 
 #include <algorithm>
+#include <cctype>
 #include <vector>
 
 #include <opencv2/core/types.hpp>
@@ -13,6 +14,16 @@
 #include "pellet/imgprocess/roi_cropper.h"
 
 namespace pellet::detector {
+namespace {
+
+std::string ToLower(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return text;
+}
+
+}  // namespace
 
 DetectorPipeline::DetectorPipeline(PelletConfig config, std::shared_ptr<infer::IClassifier> classifier)
     : config_(std::move(config)), classifier_(std::move(classifier)) {}
@@ -34,10 +45,25 @@ std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
       motion_response,
       config_.motion.diff_threshold_min,
       config_.motion.diff_threshold);
-  const cv::Mat mask = imgprocess::ApplyOpen(
-      binary,
-      config_.motion.morph_kernel,
-      config_.motion.morph_iters);
+
+  cv::Mat mask = binary;
+  if (config_.motion.morph_enable) {
+    const std::string morph_type = ToLower(config_.motion.morph_type);
+    const bool morph_debug = config_.debug.show_morphology;
+    if (morph_type == "open") {
+      mask = imgprocess::ApplyOpen(
+          binary,
+          config_.motion.morph_kernel,
+          config_.motion.morph_iters,
+          morph_debug);
+    } else if (morph_type == "close") {
+      mask = imgprocess::ApplyClose(
+          binary,
+          config_.motion.morph_kernel,
+          config_.motion.morph_iters,
+          morph_debug);
+    }
+  }
 
   const std::vector<imgprocess::Candidate> raw_candidates =
       imgprocess::ExtractCandidates(mask, gray, motion_response);

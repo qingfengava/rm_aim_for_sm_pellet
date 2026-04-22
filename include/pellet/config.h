@@ -21,6 +21,8 @@ struct MotionConfig {
   int diff_threshold{18};
   int diff_threshold_min{10};
   int diff_threshold_max{35};
+  bool morph_enable{false};
+  std::string morph_type{"open"};
   int morph_kernel{3};
   int morph_iters{1};
   int area_min{3};
@@ -57,6 +59,7 @@ struct InferenceConfig {
 struct DebugConfig {
   bool show_window{false};
   bool show_mask{false};
+  bool show_morphology{false};
 };
 
 struct PelletConfig {

@@ -10,11 +10,16 @@ motion:
   gaussian_ksize: 3
   gaussian_sigma: 0.8
   adaptive_threshold: 1
+
   diff_threshold: 18
   diff_threshold_min: 10
   diff_threshold_max: 35
+
+  morph_enable: 0
+  morph_type: "open"
   morph_kernel: 3
   morph_iters: 1
+  
   area_min: 3
   area_max: 120
   ratio_max: 4.0
@@ -46,3 +51,4 @@ inference:
 debug:
   show_window: 0
   show_mask: 0
+  show_morphology: 0

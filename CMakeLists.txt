@@ -6,10 +6,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+#====================================
 option(ENABLE_ONNXRUNTIME "Enable ONNX Runtime backend" ON)
 option(ENABLE_TENSORRT "Enable TensorRT backend" ON)
 option(ENABLE_OPENVINO "Enable OpenVINO backend" ON)
 option(ENABLE_NCNN "Enable ncnn backend" ON)
+#====================================
+
 option(BUILD_TOOLS "Build tools targets" ON)
 option(BUILD_TESTING "Build tests" OFF)
 
@@ -184,6 +187,10 @@ if(BUILD_TESTING)
         add_executable(test_roi_cropper tests/unit/test_roi_cropper.cpp)
         target_link_libraries(test_roi_cropper PRIVATE pellet_core GTest::gtest_main)
         add_test(NAME test_roi_cropper COMMAND test_roi_cropper)
+
+        add_executable(test_morphology tests/unit/test_morphology.cpp)
+        target_link_libraries(test_morphology PRIVATE pellet_core GTest::gtest_main)
+        add_test(NAME test_morphology COMMAND test_morphology)
 
         add_executable(test_detector_e2e tests/integration/test_detector_e2e.cpp)
         target_link_libraries(test_detector_e2e PRIVATE pellet_core GTest::gtest_main)
