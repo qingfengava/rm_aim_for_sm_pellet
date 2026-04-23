@@ -1,0 +1,78 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "rm_aim_for_sm_pellets",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "benchmark_detector::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-benchmark_detector-Debug-fc0a3e749f765236b05d.json",
+					"name" : "benchmark_detector",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "pellet_core::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-pellet_core-Debug-2c0da6c5db6e4fed464c.json",
+					"name" : "pellet_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "pellet_detector::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-pellet_detector-Debug-3d7af92ef8e57ac0951f.json",
+					"name" : "pellet_detector",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+		"source" : "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

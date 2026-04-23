@@ -1,0 +1,5 @@
+/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build/CMakeFiles/pellet_core.dir
+/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build/CMakeFiles/pellet_detector.dir
+/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build/CMakeFiles/benchmark_detector.dir
+/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build/CMakeFiles/edit_cache.dir
+/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build/CMakeFiles/rebuild_cache.dir

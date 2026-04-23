@@ -1,0 +1,112 @@
+[
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/config.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/config.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/config.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/detector/detector.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detector.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detector.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/detector/detector_pipeline.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detector_pipeline.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detector_pipeline.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/detector/capture_worker.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/capture_worker.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/capture_worker.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/detector/detect_worker.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detect_worker.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/detect_worker.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/detector/frame_queue.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/frame_queue.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/detector/frame_queue.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/preprocess.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/preprocess.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/preprocess.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/three_frame_diff.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/three_frame_diff.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/three_frame_diff.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/binarizer.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/binarizer.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/binarizer.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/morphology.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/morphology.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/morphology.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/candidate_extractor.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/candidate_extractor.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/candidate_extractor.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/candidate_filter.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/candidate_filter.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/candidate_filter.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/imgprocess/roi_cropper.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/roi_cropper.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/imgprocess/roi_cropper.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/infer/onnx_classifier.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/onnx_classifier.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/onnx_classifier.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/infer/mock_classifier.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/mock_classifier.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/mock_classifier.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/infer/tensorrt_classifier.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/tensorrt_classifier.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/tensorrt_classifier.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/infer/openvino_classifier.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/openvino_classifier.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/openvino_classifier.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/infer/ncnn_classifier.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/ncnn_classifier.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/infer/ncnn_classifier.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/utils/time_utils.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/utils/time_utils.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/utils/time_utils.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -DIE_THREAD=IE_THREAD_TBB -DOV_THREAD=OV_THREAD_TBB -DPELLET_WITH_OPENVINO=1 -DTBB_PREVIEW_WAITING_FOR_WORKERS=1 -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -Wno-error=deprecated-declarations -std=c++20 -o CMakeFiles/pellet_core.dir/src/utils/image_utils.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/utils/image_utils.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/utils/image_utils.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -std=c++20 -o CMakeFiles/pellet_detector.dir/src/main.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/main.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/src/main.cpp"
+},
+{
+  "directory": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/build",
+  "command": "/usr/bin/clang++ -I/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/include -isystem /usr/include/opencv4 -g -std=c++20 -o CMakeFiles/benchmark_detector.dir/tools/benchmark_detector.cpp.o -c /home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/tools/benchmark_detector.cpp",
+  "file": "/home/liukunkun/Desktop/project/rm_aim_for_sm_pellet/tools/benchmark_detector.cpp"
+}
+]
