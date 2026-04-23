@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/preprocess.h"
+#include "pellet/imgprocess/preprocess.hpp"
 
 #include <opencv2/imgproc.hpp>
 

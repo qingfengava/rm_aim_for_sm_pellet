@@ -2,7 +2,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/imgprocess/three_frame_diff.h"
+#include "pellet/imgprocess/three_frame_diff.hpp"
 
 TEST(ThreeFrameDiffTest, WarmupReturnsZeroMask) {
   pellet::imgprocess::ThreeFrameDiff diff;

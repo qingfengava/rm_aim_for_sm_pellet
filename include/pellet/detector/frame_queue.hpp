@@ -5,7 +5,7 @@
 #include <deque>
 #include <mutex>
 
-#include "pellet/detector/detector_pipeline.h"
+#include "pellet/detector/detector_pipeline.hpp"
 
 namespace pellet::detector {
 

@@ -1,4 +1,4 @@
-#include "pellet/infer/ncnn_classifier.h"
+#include "pellet/infer/ncnn_classifier.hpp"
 
 #include <algorithm>
 #include <filesystem>

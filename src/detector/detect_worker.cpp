@@ -1,4 +1,4 @@
-#include "pellet/detector/detect_worker.h"
+#include "pellet/detector/detect_worker.hpp"
 
 #include <chrono>
 

@@ -5,7 +5,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "pellet/imgprocess/morphology.h"
+#include "pellet/imgprocess/morphology.hpp"
 
 namespace {
 

@@ -1,4 +1,4 @@
-#include "pellet/detector/detector_pipeline.h"
+#include "pellet/detector/detector_pipeline.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,13 +8,13 @@
 
 #include <opencv2/core/types.hpp>
 
-#include "pellet/imgprocess/binarizer.h"
-#include "pellet/imgprocess/candidate_extractor.h"
-#include "pellet/imgprocess/candidate_filter.h"
-#include "pellet/imgprocess/candidate_nms.h"
-#include "pellet/imgprocess/morphology.h"
-#include "pellet/imgprocess/preprocess.h"
-#include "pellet/imgprocess/roi_cropper.h"
+#include "pellet/imgprocess/binarizer.hpp"
+#include "pellet/imgprocess/candidate_extractor.hpp"
+#include "pellet/imgprocess/candidate_filter.hpp"
+#include "pellet/imgprocess/candidate_nms.hpp"
+#include "pellet/imgprocess/morphology.hpp"
+#include "pellet/imgprocess/preprocess.hpp"
+#include "pellet/imgprocess/roi_cropper.hpp"
 
 namespace pellet::detector {
 namespace {

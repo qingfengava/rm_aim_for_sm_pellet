@@ -2,7 +2,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/detector/detector.h"
+#include "pellet/detector/detector.hpp"
 
 TEST(DetectorE2ETest, ProcessFrameRuns) {
   pellet::PelletConfig config;

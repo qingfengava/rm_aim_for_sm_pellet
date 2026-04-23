@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/imgprocess/candidate_extractor.h"
+#include "pellet/imgprocess/candidate_extractor.hpp"
 
 TEST(CandidateExtractorTest, ComputesExtentAndLocalContrastFromMaskPixels) {
   cv::Mat binary_mask = cv::Mat::zeros(32, 32, CV_8UC1);

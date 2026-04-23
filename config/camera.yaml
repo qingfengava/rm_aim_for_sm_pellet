@@ -1,0 +1,33 @@
+type: HIK_CAMERA
+
+hik_camera:
+  # Replace with your real camera SN, e.g. DA2166465
+  target_sn: "DA0000000"
+
+  acquisition_frame_rate_enable: true
+  acquisition_frame_rate: 120.0
+
+  exposure_time: 3500.0
+  gain: 10.0
+  gamma: 0.7
+
+  adc_bit_depth: "Bits_8"
+  pixel_format: "BayerRG8"
+
+  width: 640
+  height: 480
+  offset_x: 0
+  offset_y: 0
+  reverse_x: false
+  reverse_y: false
+
+  # none/software/hardware
+  trigger_type: "none"
+  trigger_source: ""
+  # 1: RisingEdge, 0: FallingEdge (used for hardware trigger)
+  trigger_activation: 0
+
+  use_rgb: false
+  use_ea: false
+  use_raw: false
+  use_cuda_cvt: false

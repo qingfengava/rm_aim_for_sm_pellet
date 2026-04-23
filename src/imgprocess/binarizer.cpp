@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/binarizer.h"
+#include "pellet/imgprocess/binarizer.hpp"
 
 #include <opencv2/imgproc.hpp>
 

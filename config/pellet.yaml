@@ -1,10 +1,7 @@
 camera:
-  source: "0"
-  width: 640
-  height: 480
-  fps: 120
-  set_manual_exposure: 0
-  exposure: -6
+  wust_vl_config_path: "config/camera.yaml"
+  startup_timeout_ms: 1000
+  debug_mode: 0
 
 motion:
   gaussian_ksize: 3
@@ -39,7 +36,7 @@ roi:
 inference:
   backend: "mock"
   model_path: "model/pellet_cls.onnx"
-  device: "CPU"
+  device: "GPU"
   input_blob_name: "input"
   output_blob_name: "output"
   trt_engine_path: "model/pellet_cls.engine"

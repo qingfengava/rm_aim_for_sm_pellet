@@ -4,7 +4,7 @@
 
 #include <opencv2/core/types.hpp>
 
-#include "pellet/imgprocess/candidate_nms.h"
+#include "pellet/imgprocess/candidate_nms.hpp"
 
 namespace {
 

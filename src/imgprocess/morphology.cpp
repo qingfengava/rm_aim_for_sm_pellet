@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/morphology.h"
+#include "pellet/imgprocess/morphology.hpp"
 
 #include <algorithm>
 #include <iostream>

@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/three_frame_diff.h"
+#include "pellet/imgprocess/three_frame_diff.hpp"
 
 #include <opencv2/imgproc.hpp>
 

@@ -6,8 +6,8 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "pellet/config.h"
-#include "pellet/type.h"
+#include "pellet/config.hpp"
+#include "pellet/type.hpp"
 
 namespace pellet::detector {
 class CaptureWorker;

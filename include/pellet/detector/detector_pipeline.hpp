@@ -7,10 +7,10 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "pellet/config.h"
-#include "pellet/infer/i_classifier.h"
-#include "pellet/imgprocess/three_frame_diff.h"
-#include "pellet/type.h"
+#include "pellet/config.hpp"
+#include "pellet/infer/i_classifier.hpp"
+#include "pellet/imgprocess/three_frame_diff.hpp"
+#include "pellet/type.hpp"
 
 namespace pellet::detector {
 

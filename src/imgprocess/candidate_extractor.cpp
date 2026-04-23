@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/candidate_extractor.h"
+#include "pellet/imgprocess/candidate_extractor.hpp"
 
 #include <algorithm>
 #include <cmath>

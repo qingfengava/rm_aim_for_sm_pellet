@@ -6,7 +6,7 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "pellet/config.h"
+#include "pellet/config.hpp"
 
 namespace pellet::infer {
 

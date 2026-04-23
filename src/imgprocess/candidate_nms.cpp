@@ -1,4 +1,4 @@
-#include "pellet/imgprocess/candidate_nms.h"
+#include "pellet/imgprocess/candidate_nms.hpp"
 
 #include <algorithm>
 #include <cmath>

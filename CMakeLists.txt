@@ -18,6 +18,44 @@ option(BUILD_TESTING "Build tests" OFF)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui)
 
+# Fallback to local wust_vl CMake modules for FindHikSDK.cmake / FindTensorRT.cmake
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
+endif()
+
+find_package(CUDAToolkit REQUIRED)
+find_package(TensorRT REQUIRED)
+find_package(HikSDK REQUIRED)
+find_package(wust_vl CONFIG REQUIRED)
+find_package(yaml-cpp REQUIRED)
+
+if(NOT TARGET TensorRT::TensorRT)
+    message(FATAL_ERROR "TensorRT package found but target TensorRT::TensorRT is missing.")
+endif()
+foreach(PELLET_CUDA_TARGET CUDA::cudart CUDA::nppc CUDA::nppicc)
+    if(NOT TARGET ${PELLET_CUDA_TARGET})
+        message(FATAL_ERROR "CUDAToolkit package is missing required target: ${PELLET_CUDA_TARGET}")
+    endif()
+endforeach()
+
+set(PELLET_WUST_VL_TARGET "")
+if(TARGET wust_vl::wust_vl)
+    set(PELLET_WUST_VL_TARGET wust_vl::wust_vl)
+elseif(TARGET wust_vl::wust_vl_video)
+    set(PELLET_WUST_VL_TARGET wust_vl::wust_vl_video)
+else()
+    message(FATAL_ERROR "wust_vl package found, but neither wust_vl::wust_vl nor wust_vl::wust_vl_video is available.")
+endif()
+
+set(PELLET_YAML_TARGET "")
+if(TARGET yaml-cpp::yaml-cpp)
+    set(PELLET_YAML_TARGET yaml-cpp::yaml-cpp)
+elseif(TARGET yaml-cpp)
+    set(PELLET_YAML_TARGET yaml-cpp)
+else()
+    message(FATAL_ERROR "yaml-cpp package found, but no known imported target is available.")
+endif()
+
 set(PELLET_CORE_SOURCES
     src/config.cpp
     src/detector/detector.cpp
@@ -44,7 +82,19 @@ set(PELLET_CORE_SOURCES
 
 add_library(pellet_core ${PELLET_CORE_SOURCES})
 target_include_directories(pellet_core PUBLIC include)
-target_link_libraries(pellet_core PUBLIC ${OpenCV_LIBS})
+target_compile_definitions(
+    pellet_core
+    PUBLIC
+        PELLET_CAMERA_WUST_VL_ONLY=1
+        PELLET_PIXELFMT_FIXED_BGR=1
+)
+target_link_libraries(
+    pellet_core
+    PUBLIC
+        ${OpenCV_LIBS}
+        ${PELLET_WUST_VL_TARGET}
+        ${PELLET_YAML_TARGET}
+)
 
 if(ENABLE_ONNXRUNTIME)
     find_path(
@@ -74,43 +124,12 @@ if(ENABLE_ONNXRUNTIME)
 endif()
 
 if(ENABLE_TENSORRT)
-    find_path(
-        TENSORRT_INCLUDE_DIR
-        NAMES NvInfer.h
-        HINTS
-            ${TENSORRT_ROOT}
-            $ENV{TENSORRT_ROOT}
-            /usr/include
-            /usr/include/x86_64-linux-gnu
-        PATH_SUFFIXES include
-    )
-    find_library(
-        TENSORRT_NVINFER
-        NAMES nvinfer
-        HINTS
-            ${TENSORRT_ROOT}
-            $ENV{TENSORRT_ROOT}
-            /usr/lib
-            /usr/lib/x86_64-linux-gnu
-        PATH_SUFFIXES lib lib64
-    )
-    find_path(
-        CUDA_RUNTIME_INCLUDE_DIR
-        NAMES cuda_runtime_api.h
-        HINTS
-            ${CUDA_ROOT}
-            $ENV{CUDA_ROOT}
-            /usr/local/cuda
-            /usr
-        PATH_SUFFIXES include
-    )
-    if(TENSORRT_INCLUDE_DIR AND TENSORRT_NVINFER AND CUDA_RUNTIME_INCLUDE_DIR)
+    if(TARGET TensorRT::TensorRT AND TARGET CUDA::cudart)
         target_compile_definitions(pellet_core PRIVATE PELLET_WITH_TENSORRT=1)
-        target_include_directories(pellet_core PRIVATE ${TENSORRT_INCLUDE_DIR} ${CUDA_RUNTIME_INCLUDE_DIR})
-        target_link_libraries(pellet_core PRIVATE ${TENSORRT_NVINFER})
+        target_link_libraries(pellet_core PRIVATE TensorRT::TensorRT CUDA::cudart)
         message(STATUS "TensorRT enabled.")
     else()
-        message(STATUS "TensorRT prerequisites not found (NvInfer, nvinfer, cuda_runtime_api). Build continues with mock backend available.")
+        message(STATUS "TensorRT targets unavailable. Build continues with mock backend available.")
     endif()
 endif()
 

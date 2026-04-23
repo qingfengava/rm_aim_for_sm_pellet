@@ -5,15 +5,15 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "pellet/config.h"
-#include "pellet/infer/i_classifier.h"
+#include "pellet/config.hpp"
+#include "pellet/infer/i_classifier.hpp"
 
 namespace pellet::infer {
 
-class TensorRtClassifier final : public IClassifier {
+class OpenVinoClassifier final : public IClassifier {
  public:
-  TensorRtClassifier();
-  ~TensorRtClassifier() override;
+  OpenVinoClassifier();
+  ~OpenVinoClassifier() override;
 
   bool Init(const InferenceConfig& config) override;
   std::vector<float> Infer(const std::vector<cv::Mat>& rois) override;

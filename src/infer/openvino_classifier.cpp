@@ -1,4 +1,4 @@
-#include "pellet/infer/openvino_classifier.h"
+#include "pellet/infer/openvino_classifier.hpp"
 
 #include <algorithm>
 #include <exception>

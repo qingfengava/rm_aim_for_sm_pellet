@@ -3,7 +3,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/detector/detector.h"
+#include "pellet/detector/detector.hpp"
 
 int main() {
   pellet::PelletConfig config;

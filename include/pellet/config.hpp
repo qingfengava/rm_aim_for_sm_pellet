@@ -6,12 +6,9 @@
 namespace pellet {
 
 struct CameraConfig {
-  std::string source{"0"};
-  int width{640};
-  int height{480};
-  int fps{120};
-  bool set_manual_exposure{false};
-  int exposure{-6};
+  std::string wust_vl_config_path{"config/camera.yaml"};
+  int startup_timeout_ms{1000};
+  bool debug_mode{false};
 };
 
 struct MotionConfig {

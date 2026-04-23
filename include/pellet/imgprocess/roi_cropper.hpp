@@ -5,7 +5,7 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/types.hpp>
 
-#include "pellet/imgprocess/candidate_extractor.h"
+#include "pellet/imgprocess/candidate_extractor.hpp"
 
 namespace pellet::imgprocess {
 

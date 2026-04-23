@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "train" / "config" / "train.yaml"
 
 
+#💩山，别仔细看，能跑就行
 def resolve_project_path(path_like):
     path = Path(str(path_like))
     if path.is_absolute():

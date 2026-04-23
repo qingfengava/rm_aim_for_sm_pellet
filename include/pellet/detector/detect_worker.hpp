@@ -8,9 +8,9 @@
 #include <thread>
 #include <vector>
 
-#include "pellet/detector/detector_pipeline.h"
-#include "pellet/detector/frame_queue.h"
-#include "pellet/type.h"
+#include "pellet/detector/detector_pipeline.hpp"
+#include "pellet/detector/frame_queue.hpp"
+#include "pellet/type.hpp"
 
 namespace pellet::detector {
 

@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "pellet/config.h"
-#include "pellet/detector/detector.h"
-#include "pellet/type.h"
+#include "pellet/config.hpp"
+#include "pellet/detector/detector.hpp"
+#include "pellet/type.hpp"
 
 namespace {
 
@@ -36,7 +36,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "pellet_detector started with camera source: " << config.camera.source << "\n";
+  std::cout << "pellet_detector started with camera config: "
+            << config.camera.wust_vl_config_path << "\n";
   std::cout << "Collecting results continuously (1s summary). Press Ctrl+C to stop.\n";
 
   using Clock = std::chrono::steady_clock;

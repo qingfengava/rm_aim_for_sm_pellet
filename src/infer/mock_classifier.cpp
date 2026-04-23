@@ -1,4 +1,4 @@
-#include "pellet/infer/i_classifier.h"
+#include "pellet/infer/i_classifier.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,10 +8,10 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/infer/ncnn_classifier.h"
-#include "pellet/infer/onnx_classifier.h"
-#include "pellet/infer/openvino_classifier.h"
-#include "pellet/infer/tensorrt_classifier.h"
+#include "pellet/infer/ncnn_classifier.hpp"
+#include "pellet/infer/onnx_classifier.hpp"
+#include "pellet/infer/openvino_classifier.hpp"
+#include "pellet/infer/tensorrt_classifier.hpp"
 
 namespace pellet::infer {
 namespace {

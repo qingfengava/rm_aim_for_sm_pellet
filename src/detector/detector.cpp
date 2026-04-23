@@ -1,13 +1,13 @@
-#include "pellet/detector/detector.h"
+#include "pellet/detector/detector.hpp"
 
 #include <memory>
 #include <utility>
 
-#include "pellet/detector/capture_worker.h"
-#include "pellet/detector/detect_worker.h"
-#include "pellet/detector/detector_pipeline.h"
-#include "pellet/detector/frame_queue.h"
-#include "pellet/infer/i_classifier.h"
+#include "pellet/detector/capture_worker.hpp"
+#include "pellet/detector/detect_worker.hpp"
+#include "pellet/detector/detector_pipeline.hpp"
+#include "pellet/detector/frame_queue.hpp"
+#include "pellet/infer/i_classifier.hpp"
 
 namespace pellet {
 

@@ -1,4 +1,4 @@
-#include "pellet/detector/frame_queue.h"
+#include "pellet/detector/frame_queue.hpp"
 
 #include <algorithm>
 #include <chrono>

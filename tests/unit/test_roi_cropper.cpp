@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "pellet/imgprocess/roi_cropper.h"
+#include "pellet/imgprocess/roi_cropper.hpp"
 
 TEST(RoiCropperTest, ProducesFixedOutputSize) {
   const cv::Mat gray = cv::Mat::ones(64, 64, CV_8UC1) * 128;

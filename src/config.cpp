@@ -1,4 +1,4 @@
-#include "pellet/config.h"
+#include "pellet/config.hpp"
 
 #include <opencv2/core.hpp>
 
@@ -37,12 +37,9 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
 
   const cv::FileNode camera = fs["camera"];
   if (!camera.empty()) {
-    ReadIfPresent(camera, "source", &config->camera.source);
-    ReadIfPresent(camera, "width", &config->camera.width);
-    ReadIfPresent(camera, "height", &config->camera.height);
-    ReadIfPresent(camera, "fps", &config->camera.fps);
-    ReadBoolIfPresent(camera, "set_manual_exposure", &config->camera.set_manual_exposure);
-    ReadIfPresent(camera, "exposure", &config->camera.exposure);
+    ReadIfPresent(camera, "wust_vl_config_path", &config->camera.wust_vl_config_path);
+    ReadIfPresent(camera, "startup_timeout_ms", &config->camera.startup_timeout_ms);
+    ReadBoolIfPresent(camera, "debug_mode", &config->camera.debug_mode);
   }
 
   const cv::FileNode motion = fs["motion"];

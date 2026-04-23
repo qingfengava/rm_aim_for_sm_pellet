@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "pellet/imgprocess/candidate_filter.h"
+#include "pellet/imgprocess/candidate_filter.hpp"
 
 TEST(CandidateFilterTest, AppliesAreaLimitAndRankingByRankScore) {
   std::vector<pellet::imgprocess::Candidate> candidates;

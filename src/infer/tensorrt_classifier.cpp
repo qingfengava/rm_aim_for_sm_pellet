@@ -1,4 +1,4 @@
-#include "pellet/infer/tensorrt_classifier.h"
+#include "pellet/infer/tensorrt_classifier.hpp"
 
 #include <algorithm>
 #include <filesystem>

@@ -5,8 +5,8 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "pellet/config.h"
-#include "pellet/infer/i_classifier.h"
+#include "pellet/config.hpp"
+#include "pellet/infer/i_classifier.hpp"
 
 namespace pellet::infer {
 

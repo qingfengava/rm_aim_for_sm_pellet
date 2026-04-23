@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "pellet/imgprocess/candidate_extractor.h"
+#include "pellet/imgprocess/candidate_extractor.hpp"
 
 namespace pellet::imgprocess {
 

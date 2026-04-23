@@ -1,4 +1,4 @@
-#include "pellet/infer/onnx_classifier.h"
+#include "pellet/infer/onnx_classifier.hpp"
 
 #include <vector>
 

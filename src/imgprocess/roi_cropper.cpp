@@ -1,11 +1,11 @@
-#include "pellet/imgprocess/roi_cropper.h"
+#include "pellet/imgprocess/roi_cropper.hpp"
 
 #include <algorithm>
 #include <cmath>
 
 #include <opencv2/imgproc.hpp>
 
-#include "pellet/utils/image_utils.h"
+#include "pellet/utils/image_utils.hpp"
 
 namespace pellet::imgprocess {
 

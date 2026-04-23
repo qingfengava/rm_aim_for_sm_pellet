@@ -1,4 +1,4 @@
-#include "pellet/utils/image_utils.h"
+#include "pellet/utils/image_utils.hpp"
 
 #include <algorithm>
 
