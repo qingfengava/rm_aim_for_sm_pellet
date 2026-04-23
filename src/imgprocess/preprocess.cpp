@@ -68,3 +68,9 @@ cv::Mat ToGrayAndBlur(const cv::Mat& frame_bgr, int ksize = 5) {
 
 }  // namespace pellet::imgprocess
 //普通的处理可以调用的原函数，视频流的处理调用类内的函数，内存复用，原地变换，减少内存的开销
+
+
+//接口实例
+// 1. 创建处理器对象
+//  pellet::imgprocess::VideoFrameProcessor processor;
+// process(参数就好了)    
