@@ -21,6 +21,20 @@ void ReadBoolIfPresent(const cv::FileNode& node, const char* key, bool* value) {
   }
 }
 
+void ReadUInt32IfPresent(const cv::FileNode& node, const char* key, uint32_t* value) {
+  const cv::FileNode child = node[key];
+  if (child.empty()) {
+    return;
+  }
+  int raw = 0;
+  child >> raw;
+  if (raw <= 0) {
+    *value = 0U;
+    return;
+  }
+  *value = static_cast<uint32_t>(raw);
+}
+
 }  // namespace
 
 namespace pellet {
@@ -39,7 +53,16 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
   if (!camera.empty()) {
     ReadIfPresent(camera, "wust_vl_config_path", &config->camera.wust_vl_config_path);
     ReadIfPresent(camera, "startup_timeout_ms", &config->camera.startup_timeout_ms);
-    ReadBoolIfPresent(camera, "debug_mode", &config->camera.debug_mode);
+  }
+
+  const cv::FileNode detector = fs["detector"];
+  if (!detector.empty()) {
+    ReadIfPresent(detector, "queue_capacity", &config->detector.queue_capacity);
+    ReadIfPresent(detector, "queue_valid_ms", &config->detector.queue_valid_ms);
+    ReadIfPresent(detector, "pop_poll_ms", &config->detector.pop_poll_ms);
+    ReadIfPresent(detector, "detect_pop_timeout_ms", &config->detector.detect_pop_timeout_ms);
+    ReadBoolIfPresent(
+        detector, "thread_monitor_enable", &config->detector.thread_monitor_enable);
   }
 
   const cv::FileNode motion = fs["motion"];
@@ -93,10 +116,9 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
 
   const cv::FileNode debug = fs["debug"];
   if (!debug.empty()) {
-    ReadBoolIfPresent(debug, "show_window", &config->debug.show_window);
-    ReadBoolIfPresent(debug, "show_mask", &config->debug.show_mask);
-    ReadBoolIfPresent(debug, "show_morphology", &config->debug.show_morphology);
-    ReadBoolIfPresent(debug, "show_pipeline_stats", &config->debug.show_pipeline_stats);
+    ReadBoolIfPresent(debug, "enable", &config->debug.enable);
+    ReadIfPresent(debug, "level", &config->debug.level);
+    ReadUInt32IfPresent(debug, "modules_mask", &config->debug.modules_mask);
   }
 
   return true;

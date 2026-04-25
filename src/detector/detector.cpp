@@ -8,6 +8,7 @@
 #include "pellet/detector/detector_pipeline.hpp"
 #include "pellet/detector/frame_queue.hpp"
 #include "pellet/infer/i_classifier.hpp"
+#include "pellet/utils/debug_utils.hpp"
 
 namespace pellet {
 
@@ -27,10 +28,26 @@ bool PelletDetector::Init() {
     return false;
   }
 
+  const int queue_capacity = config_.detector.queue_capacity > 0
+      ? config_.detector.queue_capacity
+      : 1;
+  const bool capture_debug =
+      utils::IsDebugEnabled(config_, utils::DebugFeature::kCaptureLogs);
+  const bool thread_status_debug =
+      utils::IsDebugEnabled(config_, utils::DebugFeature::kThreadStatus);
   pipeline_ = std::make_unique<detector::DetectorPipeline>(config_, classifier_);
-  frame_queue_ = std::make_unique<detector::FrameQueue>(3);
-  capture_worker_ = std::make_unique<detector::CaptureWorker>(config_.camera, frame_queue_.get());
-  detect_worker_ = std::make_unique<detector::DetectWorker>(frame_queue_.get(), pipeline_.get());
+  frame_queue_ = std::make_unique<detector::FrameQueue>(
+      static_cast<std::size_t>(queue_capacity),
+      config_.detector.queue_valid_ms,
+      config_.detector.pop_poll_ms);
+  capture_worker_ = std::make_unique<detector::CaptureWorker>(
+      config_.camera, frame_queue_.get(), capture_debug);
+  detect_worker_ = std::make_unique<detector::DetectWorker>(
+      frame_queue_.get(),
+      pipeline_.get(),
+      config_.detector.detect_pop_timeout_ms,
+      config_.detector.thread_monitor_enable,
+      thread_status_debug);
 
   initialized_ = true;
   return true;
@@ -49,7 +66,9 @@ bool PelletDetector::Start() {
   return true;
 }
 
+//stop order: capture_worker->Stop() -> frame_queue->Stop() -> detect_worker->Stop()
 void PelletDetector::Stop() {
+
   if (capture_worker_) {
     capture_worker_->Stop();
   }
@@ -61,6 +80,7 @@ void PelletDetector::Stop() {
   }
 }
 
+//异步
 bool PelletDetector::PopDetections(std::vector<Detection>* detections, int timeout_ms) {
   if (!detect_worker_) {
     return false;
@@ -68,6 +88,7 @@ bool PelletDetector::PopDetections(std::vector<Detection>* detections, int timeo
   return detect_worker_->PopLatest(detections, timeout_ms);
 }
 
+//同步单帧
 std::vector<Detection> PelletDetector::ProcessFrame(
     const cv::Mat& frame_bgr,
     uint32_t frame_id,

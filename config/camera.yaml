@@ -1,7 +1,6 @@
 type: HIK_CAMERA
 
 hik_camera:
-  # Replace with your real camera SN, e.g. DA2166465
   target_sn: "DA0000000"
 
   acquisition_frame_rate_enable: true
@@ -10,6 +9,8 @@ hik_camera:
   exposure_time: 3500.0
   gain: 10.0
   gamma: 0.7
+
+  runtime_control_enable: true
 
   adc_bit_depth: "Bits_8"
   pixel_format: "BayerRG8"
@@ -21,12 +22,15 @@ hik_camera:
   reverse_x: false
   reverse_y: false
 
-  # none/software/hardware
+  # Trigger: none / software / hardware
   trigger_type: "none"
   trigger_source: ""
-  # 1: RisingEdge, 0: FallingEdge (used for hardware trigger)
+  # hardware only: 1=RisingEdge, 0=FallingEdge
   trigger_activation: 0
+  # software trigger only, 0 means no throttle
+  software_trigger_interval_ms: 0
 
+  # Output conversion
   use_rgb: false
   use_ea: false
   use_raw: false

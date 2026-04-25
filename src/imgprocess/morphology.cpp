@@ -1,9 +1,9 @@
 #include "pellet/imgprocess/morphology.hpp"
 
 #include <algorithm>
-#include <iostream>
 
 #include <opencv2/imgproc.hpp>
+#include <wust_vl/common/utils/logger.hpp>
 
 namespace pellet::imgprocess {
 namespace {
@@ -107,11 +107,11 @@ cv::Mat ApplyOpen(const cv::Mat& binary_mask, int kernel_size, int iterations, b
   const double keep_ratio = static_cast<double>(after_nonzero) / static_cast<double>(before_nonzero);
   if (keep_ratio < kMinKeepRatio) {
     if (debug_mode) {
-      std::cerr << "[WARNING] ApplyOpen fallback triggered: foreground keep ratio too low "
-                << "(before=" << before_nonzero
-                << ", after=" << after_nonzero
-                << ", ratio=" << keep_ratio
-                << ", threshold=" << kMinKeepRatio << ")\n";
+      WUST_WARN("morphology") << "ApplyOpen fallback triggered: foreground keep ratio too low "
+                              << "(before=" << before_nonzero
+                              << ", after=" << after_nonzero
+                              << ", ratio=" << keep_ratio
+                              << ", threshold=" << kMinKeepRatio << ")";
     }
     return mask_bin;
   }
@@ -164,16 +164,16 @@ cv::Mat ApplyClose(const cv::Mat& binary_mask, int kernel_size, int iterations, 
 
   if (fallback) {
     if (debug_mode) {
-      std::cerr << "[WARNING] ApplyClose fallback triggered: possible over-merge "
-                << "(fg_before=" << before.nonzero
-                << ", fg_after=" << after.nonzero
-                << ", r_fg=" << r_fg
-                << ", cand_before=" << before.components
-                << ", cand_after=" << after.components
-                << ", r_cand=" << r_cand
-                << ", largest_after=" << after.largest_component_area
-                << ", r_largest=" << r_largest
-                << ")\n";
+      WUST_WARN("morphology") << "ApplyClose fallback triggered: possible over-merge "
+                              << "(fg_before=" << before.nonzero
+                              << ", fg_after=" << after.nonzero
+                              << ", r_fg=" << r_fg
+                              << ", cand_before=" << before.components
+                              << ", cand_after=" << after.components
+                              << ", r_cand=" << r_cand
+                              << ", largest_after=" << after.largest_component_area
+                              << ", r_largest=" << r_largest
+                              << ")";
     }
     return mask_bin;
   }

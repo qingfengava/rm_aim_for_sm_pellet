@@ -8,7 +8,14 @@ namespace pellet {
 struct CameraConfig {
   std::string wust_vl_config_path{"config/camera.yaml"};
   int startup_timeout_ms{1000};
-  bool debug_mode{false};
+};
+
+struct DetectorConfig {
+  int queue_capacity{3};
+  int queue_valid_ms{1000};
+  int pop_poll_ms{2};
+  int detect_pop_timeout_ms{100};
+  bool thread_monitor_enable{true};
 };
 
 struct MotionConfig {
@@ -58,14 +65,14 @@ struct InferenceConfig {
 };
 
 struct DebugConfig {
-  bool show_window{false};
-  bool show_mask{false};
-  bool show_morphology{false};
-  bool show_pipeline_stats{false};
+  bool enable{false};
+  int level{0};
+  uint32_t modules_mask{0};
 };
 
 struct PelletConfig {
   CameraConfig camera{};
+  DetectorConfig detector{};
   MotionConfig motion{};
   RoiConfig roi{};
   InferenceConfig inference{};

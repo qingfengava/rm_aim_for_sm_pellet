@@ -2,21 +2,55 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 namespace pellet::detector {
+namespace {
 
-FrameQueue::FrameQueue(std::size_t capacity) : capacity_(std::max<std::size_t>(1, capacity)) {}
+int ClampMs(const int value, const int fallback) {
+  return value > 0 ? value : fallback;
+}
 
-void FrameQueue::Push(const FramePacket& frame) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (stopped_) {
+}  // namespace
+
+FrameQueue::FrameQueue(std::size_t capacity, int queue_valid_ms, int pop_poll_ms)
+    : capacity_(std::max<std::size_t>(1, capacity)),
+      queue_valid_ms_(ClampMs(queue_valid_ms, 1000)),
+      pop_poll_ms_(ClampMs(pop_poll_ms, 2)),
+      timed_queue_(static_cast<double>(queue_valid_ms_) / 1000.0) {}
+
+void FrameQueue::PruneStaleMetaLocked(const Clock::time_point& now) {
+  if (meta_timestamps_.empty()) {
     return;
   }
-  if (queue_.size() >= capacity_) {
-    queue_.pop_front();
+  const auto valid_window = std::chrono::milliseconds(queue_valid_ms_);
+  while (!meta_timestamps_.empty() && (now - meta_timestamps_.front()) > valid_window) {
+    meta_timestamps_.pop_front();
   }
-  queue_.push_back(frame);
-  cv_.notify_one();
+}
+
+void FrameQueue::Push(const FramePacket& frame) {
+  if (!timed_queue_.is_alive()) {
+    return;
+  }
+  const auto now = Clock::now();
+  std::lock_guard<std::mutex> lock(meta_mutex_);
+  PruneStaleMetaLocked(now);
+
+  //丢旧保新
+  if (meta_timestamps_.size() >= capacity_) {
+    FramePacket dropped;
+    if (timed_queue_.pop_valid(dropped)) {
+      if (!meta_timestamps_.empty()) {
+        meta_timestamps_.pop_front();
+      }
+    } else {
+      meta_timestamps_.clear();
+    }
+  }
+
+  timed_queue_.push(frame, now);
+  meta_timestamps_.push_back(now);
 }
 
 bool FrameQueue::Pop(FramePacket* frame, int timeout_ms) {
@@ -24,24 +58,61 @@ bool FrameQueue::Pop(FramePacket* frame, int timeout_ms) {
     return false;
   }
 
-  std::unique_lock<std::mutex> lock(mutex_);
-  cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this] {
-    return stopped_ || !queue_.empty();
-  });
-
-  if (queue_.empty()) {
-    return false;
+  if (timeout_ms <= 0) {
+    std::lock_guard<std::mutex> lock(meta_mutex_);
+    PruneStaleMetaLocked(Clock::now());
+    if (!timed_queue_.pop_valid(*frame)) {
+      return false;
+    }
+    if (!meta_timestamps_.empty()) {
+      meta_timestamps_.pop_front();
+    }
+    return true;
   }
 
-  *frame = queue_.front();
-  queue_.pop_front();
+  const auto deadline = Clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (Clock::now() < deadline) {
+    {
+      std::lock_guard<std::mutex> lock(meta_mutex_);
+      PruneStaleMetaLocked(Clock::now());
+      if (timed_queue_.pop_valid(*frame)) {
+        if (!meta_timestamps_.empty()) {
+          meta_timestamps_.pop_front();
+        }
+        return true;
+      }
+      if (!timed_queue_.is_alive()) {
+        meta_timestamps_.clear();
+        return false;
+      }
+    }
+
+    const auto now = Clock::now();
+    const auto remaining_ms =
+        static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+                             .count());
+    if (remaining_ms <= 0) {
+      break;
+    }
+    const int sleep_ms = std::max(1, std::min(pop_poll_ms_, remaining_ms));
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+  }
+
+  std::lock_guard<std::mutex> lock(meta_mutex_);
+  PruneStaleMetaLocked(Clock::now());
+  if (!timed_queue_.pop_valid(*frame)) {
+    return false;
+  }
+  if (!meta_timestamps_.empty()) {
+    meta_timestamps_.pop_front();
+  }
   return true;
 }
 
 void FrameQueue::Stop() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  stopped_ = true;
-  cv_.notify_all();
+  timed_queue_.stop();
+  std::lock_guard<std::mutex> lock(meta_mutex_);
+  meta_timestamps_.clear();
 }
 
 }  // namespace pellet::detector

@@ -15,6 +15,40 @@ cmake --build build -j
 ./build/pellet_detector config/pellet.yaml
 ```
 
+## Recorder 使用说明
+
+`recorder` 用于把相机原始帧按二进制格式持续落盘，便于离线复现与数据回放。
+
+常用命令：
+
+```bash
+# 默认读取 config/camera.yaml，输出到 logs/recorder/frames.rec
+./build/recorder
+
+# 指定相机配置和输出文件
+./build/recorder --camera-config config/camera.yaml --output logs/recorder/frames.rec
+
+# 限时录制 30 秒
+./build/recorder --duration-sec 30
+
+# 最多录制 5000 帧
+./build/recorder --max-frames 5000
+
+# 打开逐帧日志
+./build/recorder --verbose
+```
+
+参数说明：
+
+- `--camera-config <path>`：相机配置文件路径（默认 `config/camera.yaml`）。
+- `--output <path>`：录制输出路径（默认 `logs/recorder/frames.rec`）。
+- `--duration-sec <sec>`：最大录制时长，`0` 表示不限时。
+- `--max-frames <n>`：最大录制帧数，`0` 表示不限帧。
+- `--verbose`：输出逐帧日志。
+- `--help`：打印帮助。
+
+运行中会每 1 秒输出统计（fps、吞吐、累计帧数、丢帧数）；`Ctrl+C` 可优雅停止并自动收尾。
+
 ## 训练脚本功能（train/train_tiny_CNN.py）
 
 训练脚本支持 5 种模式：`prepare`、`train`、`export`、`infer`、`all`。
@@ -119,5 +153,13 @@ Camera
 - `motion.motion_score_min`：候选运动强度下限，抑制静态噪点。
 - `motion.nms_enable`：是否启用 NMS（`0/1`）。
 - `motion.nms_iou`：NMS IoU 阈值（常用 `0.2~0.3`，默认 `0.25`）。
+- `debug.enable`：统一 debug 开关（`0/1`）。
+- `debug.level`：分级开关（`0`=采集日志，`1`=采集+pipeline统计+线程状态，`>=2`=全部调试特性）。
+- `debug.modules_mask`：手动位掩码覆盖（非 0 时优先于 `level`）。
 
 说明：`motion.max_candidates` 与 `inference.max_candidates` 语义分离，前者用于 NMS 之前控制计算量，后者用于 NMS 之后控制最终送入 ROI/CNN 的数量。
+
+## Debug 配置
+
+- 仅支持统一 debug 配置：`debug.enable`、`debug.level`、`debug.modules_mask`。
+- `modules_mask` 非 0 时优先级最高；否则由 `enable + level` 决定启用项。

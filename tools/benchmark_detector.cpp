@@ -1,11 +1,13 @@
 #include <chrono>
-#include <iostream>
 
 #include <opencv2/core.hpp>
+#include <wust_vl/common/utils/logger.hpp>
 
 #include "pellet/detector/detector.hpp"
 
 int main() {
+  wust_vl::initLogger("INFO", "logs", true, false, true);
+
   pellet::PelletConfig config;
   config.inference.backend = "mock";
   config.inference.positive_threshold = 0.7F;
@@ -25,7 +27,7 @@ int main() {
   const auto end = std::chrono::steady_clock::now();
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 
-  std::cout << "benchmark_detector: " << kIters << " frames in " << ms << " ms, detections=" << total
-            << "\n";
+  WUST_MAIN("benchmark")
+      << "benchmark_detector: " << kIters << " frames in " << ms << " ms, detections=" << total;
   return 0;
 }

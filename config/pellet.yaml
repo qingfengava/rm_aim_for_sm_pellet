@@ -1,7 +1,13 @@
 camera:
   wust_vl_config_path: "config/camera.yaml"
   startup_timeout_ms: 1000
-  debug_mode: 0
+
+detector:
+  queue_capacity: 5
+  queue_valid_ms: 1000
+  pop_poll_ms: 2
+  detect_pop_timeout_ms: 100
+  thread_monitor_enable: 1
 
 motion:
   gaussian_ksize: 3
@@ -13,7 +19,7 @@ motion:
   diff_threshold_max: 35
 
   morph_enable: 1
-  morph_type: "open"
+  morph_type: "open" #open/close
   morph_kernel: 3
   morph_iters: 1
   
@@ -50,7 +56,10 @@ inference:
   max_candidates: 10 #post-nms
 
 debug:
-  show_window: 0
-  show_mask: 0
-  show_morphology: 0
-  show_pipeline_stats: 0
+  enable: 0
+  level: 0  # 自动分级：0=capture，1=capture+pipeline_stats+thread_status，2=all
+  modules_mask: 0
+  # 手动位掩码覆盖：
+  # 0   -> 不手动覆盖，走 enable + level
+  # 非0 -> 按位启用并覆盖 enable/level（例如 1=仅capture，3=capture+morphology）
+  # bit0:capture bit1:morphology bit2:pipeline_stats bit3:thread_status bit4:window bit5:mask(预留)

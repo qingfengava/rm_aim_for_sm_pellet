@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <iostream>
 #include <vector>
 
 #include <opencv2/core/types.hpp>
+#include <wust_vl/common/utils/logger.hpp>
 
 #include "pellet/imgprocess/binarizer.hpp"
 #include "pellet/imgprocess/candidate_extractor.hpp"
@@ -15,6 +15,7 @@
 #include "pellet/imgprocess/morphology.hpp"
 #include "pellet/imgprocess/preprocess.hpp"
 #include "pellet/imgprocess/roi_cropper.hpp"
+#include "pellet/utils/debug_utils.hpp"
 
 namespace pellet::detector {
 namespace {
@@ -57,7 +58,8 @@ std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
   cv::Mat mask = binary;
   if (config_.motion.morph_enable) {
     const std::string morph_type = ToLower(config_.motion.morph_type);
-    const bool morph_debug = config_.debug.show_morphology;
+    const bool morph_debug =
+        utils::IsDebugEnabled(config_, utils::DebugFeature::kMorphology);
     if (morph_type == "open") {
       mask = imgprocess::ApplyOpen(
           binary,
@@ -100,16 +102,15 @@ std::vector<Detection> DetectorPipeline::Process(const FramePacket& frame) {
     topk_candidates.resize(post_nms_topk);
   }
 
-  if (config_.debug.show_pipeline_stats) {
+  if (utils::IsDebugEnabled(config_, utils::DebugFeature::kPipelineStats)) {
     const auto now = std::chrono::steady_clock::now();
     if (!stats_log_initialized_ ||
         (now - last_stats_log_tp_) >= std::chrono::seconds(1)) {
-      std::cout
-          << "[pipeline] candidates raw=" << raw_candidates.size()
+      WUST_INFO("detector_pipeline")
+          << "candidates raw=" << raw_candidates.size()
           << " -> filtered=" << filtered_candidates.size()
           << " -> nms=" << nms_candidates.size()
-          << " -> topk=" << topk_candidates.size()
-          << "\n";
+          << " -> topk=" << topk_candidates.size();
       last_stats_log_tp_ = now;
       stats_log_initialized_ = true;
     }

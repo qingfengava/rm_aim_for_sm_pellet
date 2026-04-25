@@ -12,31 +12,35 @@ option(ENABLE_TENSORRT "Enable TensorRT backend" ON)
 option(ENABLE_OPENVINO "Enable OpenVINO backend" ON)
 option(ENABLE_NCNN "Enable ncnn backend" ON)
 #====================================
-
 option(BUILD_TOOLS "Build tools targets" ON)
-option(BUILD_TESTING "Build tests" OFF)
+option(PELLET_ENABLE_LTO "Enable LTO(IPO) for Release and RelWithDebInfo builds" ON)
+#====================================
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui)
+if(NOT DEFINED BUILD_TESTING)
+    set(BUILD_TESTING OFF CACHE BOOL "Build tests")
+endif()
+
+if(PELLET_ENABLE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT PELLET_IPO_SUPPORTED OUTPUT PELLET_IPO_OUTPUT)
+    if(PELLET_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+        message(STATUS "IPO/LTO enabled for Release and RelWithDebInfo.")
+    else()
+        message(WARNING "IPO/LTO requested but not supported: ${PELLET_IPO_OUTPUT}")
+    endif()
+endif()
 
 # Fallback to local wust_vl CMake modules for FindHikSDK.cmake / FindTensorRT.cmake
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
 endif()
 
-find_package(CUDAToolkit REQUIRED)
-find_package(TensorRT REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 find_package(HikSDK REQUIRED)
 find_package(wust_vl CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
-
-if(NOT TARGET TensorRT::TensorRT)
-    message(FATAL_ERROR "TensorRT package found but target TensorRT::TensorRT is missing.")
-endif()
-foreach(PELLET_CUDA_TARGET CUDA::cudart CUDA::nppc CUDA::nppicc)
-    if(NOT TARGET ${PELLET_CUDA_TARGET})
-        message(FATAL_ERROR "CUDAToolkit package is missing required target: ${PELLET_CUDA_TARGET}")
-    endif()
-endforeach()
 
 set(PELLET_WUST_VL_TARGET "")
 if(TARGET wust_vl::wust_vl)
@@ -76,18 +80,12 @@ set(PELLET_CORE_SOURCES
     src/infer/tensorrt_classifier.cpp
     src/infer/openvino_classifier.cpp
     src/infer/ncnn_classifier.cpp
-    src/utils/time_utils.cpp
+    src/utils/debug_utils.cpp
     src/utils/image_utils.cpp
 )
 
 add_library(pellet_core ${PELLET_CORE_SOURCES})
 target_include_directories(pellet_core PUBLIC include)
-target_compile_definitions(
-    pellet_core
-    PUBLIC
-        PELLET_CAMERA_WUST_VL_ONLY=1
-        PELLET_PIXELFMT_FIXED_BGR=1
-)
 target_link_libraries(
     pellet_core
     PUBLIC
@@ -124,6 +122,16 @@ if(ENABLE_ONNXRUNTIME)
 endif()
 
 if(ENABLE_TENSORRT)
+    find_package(CUDAToolkit REQUIRED)
+    find_package(TensorRT REQUIRED)
+    if(NOT TARGET TensorRT::TensorRT)
+        message(FATAL_ERROR "TensorRT package found but target TensorRT::TensorRT is missing.")
+    endif()
+    foreach(PELLET_CUDA_TARGET CUDA::cudart CUDA::nppc CUDA::nppicc)
+        if(NOT TARGET ${PELLET_CUDA_TARGET})
+            message(FATAL_ERROR "CUDAToolkit package is missing required target: ${PELLET_CUDA_TARGET}")
+        endif()
+    endforeach()
     if(TARGET TensorRT::TensorRT AND TARGET CUDA::cudart)
         target_compile_definitions(pellet_core PRIVATE PELLET_WITH_TENSORRT=1)
         target_link_libraries(pellet_core PRIVATE TensorRT::TensorRT CUDA::cudart)
@@ -190,39 +198,30 @@ target_link_libraries(pellet_detector PRIVATE pellet_core)
 if(BUILD_TOOLS)
     add_executable(benchmark_detector tools/benchmark_detector.cpp)
     target_link_libraries(benchmark_detector PRIVATE pellet_core)
+    add_executable(recorder tools/recorder.cpp)
+    target_link_libraries(recorder PRIVATE pellet_core)
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
     find_package(GTest QUIET)
     if(GTest_FOUND)
-        add_executable(test_three_frame_diff tests/unit/test_three_frame_diff.cpp)
-        target_link_libraries(test_three_frame_diff PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_three_frame_diff COMMAND test_three_frame_diff)
+        function(pellet_add_gtest test_name test_source)
+            add_executable(${test_name} ${test_source})
+            target_link_libraries(${test_name} PRIVATE pellet_core GTest::gtest_main)
+            add_test(NAME ${test_name} COMMAND ${test_name})
+        endfunction()
 
-        add_executable(test_candidate_filter tests/unit/test_candidate_filter.cpp)
-        target_link_libraries(test_candidate_filter PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_candidate_filter COMMAND test_candidate_filter)
-
-        add_executable(test_candidate_extractor tests/unit/test_candidate_extractor.cpp)
-        target_link_libraries(test_candidate_extractor PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_candidate_extractor COMMAND test_candidate_extractor)
-
-        add_executable(test_candidate_nms tests/unit/test_candidate_nms.cpp)
-        target_link_libraries(test_candidate_nms PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_candidate_nms COMMAND test_candidate_nms)
-
-        add_executable(test_roi_cropper tests/unit/test_roi_cropper.cpp)
-        target_link_libraries(test_roi_cropper PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_roi_cropper COMMAND test_roi_cropper)
-
-        add_executable(test_morphology tests/unit/test_morphology.cpp)
-        target_link_libraries(test_morphology PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_morphology COMMAND test_morphology)
-
-        add_executable(test_detector_e2e tests/integration/test_detector_e2e.cpp)
-        target_link_libraries(test_detector_e2e PRIVATE pellet_core GTest::gtest_main)
-        add_test(NAME test_detector_e2e COMMAND test_detector_e2e)
+        pellet_add_gtest(test_three_frame_diff tests/unit/test_three_frame_diff.cpp)
+        pellet_add_gtest(test_debug_utils tests/unit/test_debug_utils.cpp)
+        pellet_add_gtest(test_candidate_filter tests/unit/test_candidate_filter.cpp)
+        pellet_add_gtest(test_candidate_extractor tests/unit/test_candidate_extractor.cpp)
+        pellet_add_gtest(test_candidate_nms tests/unit/test_candidate_nms.cpp)
+        pellet_add_gtest(test_roi_cropper tests/unit/test_roi_cropper.cpp)
+        pellet_add_gtest(test_morphology tests/unit/test_morphology.cpp)
+        pellet_add_gtest(test_frame_queue_wust_vl tests/unit/test_frame_queue_wust_vl.cpp)
+        pellet_add_gtest(test_detect_worker_threading tests/unit/test_detect_worker_threading.cpp)
+        pellet_add_gtest(test_detector_e2e tests/integration/test_detector_e2e.cpp)
     else()
         message(WARNING "BUILD_TESTING is ON but GTest was not found. Skipping test targets.")
     endif()
