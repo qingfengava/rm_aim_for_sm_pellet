@@ -9,8 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #====================================
 option(ENABLE_ONNXRUNTIME "Enable ONNX Runtime backend" ON)
 option(ENABLE_TENSORRT "Enable TensorRT backend" ON)
-option(ENABLE_OPENVINO "Enable OpenVINO backend" ON)
-option(ENABLE_NCNN "Enable ncnn backend" ON)
+option(ENABLE_OPENVINO "Enable OpenVINO backend" OFF)
+option(ENABLE_NCNN "Enable ncnn backend" OFF)
 #====================================
 option(BUILD_TOOLS "Build tools targets" ON)
 option(PELLET_ENABLE_LTO "Enable LTO(IPO) for Release and RelWithDebInfo builds" ON)
@@ -94,6 +94,11 @@ target_link_libraries(
         ${PELLET_YAML_TARGET}
 )
 
+# Keep mock backend only for test builds.
+if(BUILD_TESTING)
+    target_compile_definitions(pellet_core PRIVATE PELLET_ENABLE_MOCK_BACKEND=1)
+endif()
+
 if(ENABLE_ONNXRUNTIME)
     find_path(
         ONNXRUNTIME_INCLUDE_DIR
@@ -148,7 +153,39 @@ if(ENABLE_OPENVINO)
         target_link_libraries(pellet_core PRIVATE openvino::runtime)
         message(STATUS "OpenVINO enabled.")
     else()
-        message(STATUS "OpenVINO not found. Build continues with mock backend available.")
+        find_library(
+            OPENVINO_RUNTIME_LIBRARY
+            NAMES openvino libopenvino.so.2600
+            HINTS
+                /opt/intel/openvino_2026.0.0/runtime
+                /opt/intel/openvino/runtime
+            PATH_SUFFIXES
+                lib
+                lib64
+                lib/intel64
+                runtime/lib
+                runtime/lib/intel64
+        )
+        find_path(
+            OPENVINO_INCLUDE_DIR
+            NAMES openvino/openvino.hpp
+            HINTS
+                /opt/intel/openvino_2026.0.0/runtime
+                /opt/intel/openvino/runtime
+            PATH_SUFFIXES
+                include
+                runtime/include
+        )
+        if(OPENVINO_RUNTIME_LIBRARY AND OPENVINO_INCLUDE_DIR)
+            target_compile_definitions(pellet_core PRIVATE PELLET_WITH_OPENVINO=1)
+            target_include_directories(pellet_core PRIVATE ${OPENVINO_INCLUDE_DIR})
+            target_link_libraries(pellet_core PRIVATE ${OPENVINO_RUNTIME_LIBRARY})
+            get_filename_component(OPENVINO_RUNTIME_DIR "${OPENVINO_RUNTIME_LIBRARY}" DIRECTORY)
+            set_property(TARGET pellet_core APPEND PROPERTY BUILD_RPATH "${OPENVINO_RUNTIME_DIR}")
+            message(STATUS "OpenVINO enabled via fallback path: ${OPENVINO_RUNTIME_LIBRARY}")
+        else()
+            message(STATUS "OpenVINO not found. Build continues with mock backend available.")
+        endif()
     endif()
 endif()
 

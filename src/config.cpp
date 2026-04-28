@@ -103,12 +103,20 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
     ReadIfPresent(inference, "device", &config->inference.device);
     ReadIfPresent(inference, "input_blob_name", &config->inference.input_blob_name);
     ReadIfPresent(inference, "output_blob_name", &config->inference.output_blob_name);
-    ReadIfPresent(inference, "trt_engine_path", &config->inference.trt_engine_path);
+    ReadIfPresent(inference, "input_width", &config->inference.input_width);
+    ReadIfPresent(inference, "input_height", &config->inference.input_height);
+    ReadIfPresent(inference, "batch_size", &config->inference.batch_size);
+    ReadIfPresent(inference, "precision", &config->inference.precision);
+    ReadIfPresent(inference, "int8_model_path", &config->inference.int8_model_path);
+    ReadIfPresent(inference, "engine_path", &config->inference.engine_path);
+    ReadBoolIfPresent(
+        inference,
+        "trt_require_prebuilt_engine",
+        &config->inference.trt_require_prebuilt_engine);
     ReadIfPresent(inference, "openvino_model_path", &config->inference.openvino_model_path);
     ReadIfPresent(inference, "ncnn_param_path", &config->inference.ncnn_param_path);
     ReadIfPresent(inference, "ncnn_bin_path", &config->inference.ncnn_bin_path);
     ReadIfPresent(inference, "num_threads", &config->inference.num_threads);
-    ReadBoolIfPresent(inference, "use_fp16", &config->inference.use_fp16);
     ReadIfPresent(inference, "positive_threshold", &config->inference.positive_threshold);
     ReadIfPresent(inference, "weak_threshold", &config->inference.weak_threshold);
     ReadIfPresent(inference, "max_candidates", &config->inference.max_candidates);

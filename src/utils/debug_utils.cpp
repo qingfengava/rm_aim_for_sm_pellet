@@ -9,7 +9,7 @@ constexpr uint32_t kAllDebugMask =
     DebugFeatureMask(DebugFeature::kPipelineStats) |
     DebugFeatureMask(DebugFeature::kThreadStatus) |
     DebugFeatureMask(DebugFeature::kShowWindow) |
-    DebugFeatureMask(DebugFeature::kShowMask);
+    DebugFeatureMask(DebugFeature::kInferLogs);
 
 uint32_t LevelDebugMask(int level) {
   if (level <= 0) {

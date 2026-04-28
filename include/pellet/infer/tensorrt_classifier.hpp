@@ -15,7 +15,7 @@ class TensorRtClassifier final : public IClassifier {
   TensorRtClassifier();
   ~TensorRtClassifier() override;
 
-  bool Init(const InferenceConfig& config) override;
+  bool Init(const InferenceConfig& config, const InferRuntimeOptions& runtime_options) override;
   std::vector<float> Infer(const std::vector<cv::Mat>& rois) override;
 
  private:

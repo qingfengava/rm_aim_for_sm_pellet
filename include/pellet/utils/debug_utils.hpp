@@ -12,7 +12,7 @@ enum class DebugFeature : uint32_t {
   kPipelineStats = 1u << 2,
   kThreadStatus = 1u << 3,
   kShowWindow = 1u << 4,
-  kShowMask = 1u << 5,
+  kInferLogs = 1u << 5,
 };
 
 constexpr uint32_t DebugFeatureMask(DebugFeature feature) {

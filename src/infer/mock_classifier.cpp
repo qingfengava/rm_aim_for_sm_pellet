@@ -16,9 +16,13 @@
 namespace pellet::infer {
 namespace {
 
+#if defined(PELLET_ENABLE_MOCK_BACKEND)
 class MockClassifier final : public IClassifier {
  public:
-  bool Init(const InferenceConfig& config) override {
+  bool Init(
+      const InferenceConfig& config,
+      const InferRuntimeOptions& runtime_options) override {
+    (void)runtime_options;
     config_ = config;
     return true;
   }
@@ -42,6 +46,7 @@ class MockClassifier final : public IClassifier {
  private:
   InferenceConfig config_{};
 };
+#endif
 
 std::string ToLower(std::string text) {
   std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
@@ -66,7 +71,12 @@ std::shared_ptr<IClassifier> CreateClassifier(const std::string& backend) {
   if (normalized == "ncnn") {
     return std::make_shared<NcnnClassifier>();
   }
-  return std::make_shared<MockClassifier>();
+#if defined(PELLET_ENABLE_MOCK_BACKEND)
+  if (normalized == "mock") {
+    return std::make_shared<MockClassifier>();
+  }
+#endif
+  return nullptr;
 }
 
 }  // namespace pellet::infer

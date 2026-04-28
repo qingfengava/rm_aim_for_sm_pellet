@@ -163,3 +163,4 @@ Camera
 
 - 仅支持统一 debug 配置：`debug.enable`、`debug.level`、`debug.modules_mask`。
 - `modules_mask` 非 0 时优先级最高；否则由 `enable + level` 决定启用项。
+- `level=2` 会启用 infer 初始化日志；`modules_mask` 中 `bit5` 也用于单独控制 infer 日志输出。

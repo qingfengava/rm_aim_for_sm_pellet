@@ -23,8 +23,12 @@ bool PelletDetector::Init() {
     return true;
   }
 
+  infer::InferRuntimeOptions infer_runtime_options;
+  infer_runtime_options.debug_log_init =
+      utils::IsDebugEnabled(config_, utils::DebugFeature::kInferLogs);
   classifier_ = infer::CreateClassifier(config_.inference.backend);
-  if (!classifier_ || !classifier_->Init(config_.inference)) {
+  if (!classifier_ ||
+      !classifier_->Init(config_.inference, infer_runtime_options)) {
     return false;
   }
 

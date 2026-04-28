@@ -10,11 +10,17 @@
 
 namespace pellet::infer {
 
+struct InferRuntimeOptions {
+  bool debug_log_init{false};
+};
+
 class IClassifier {
  public:
   virtual ~IClassifier() = default;
 
-  virtual bool Init(const InferenceConfig& config) = 0;
+  virtual bool Init(
+      const InferenceConfig& config,
+      const InferRuntimeOptions& runtime_options) = 0;
   virtual std::vector<float> Infer(const std::vector<cv::Mat>& rois) = 0;
 };
 

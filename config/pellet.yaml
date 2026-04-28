@@ -31,7 +31,7 @@ motion:
   motion_score_min: 0.08
   nms_enable: 1
   nms_iou: 0.25
-  max_candidates: 20 #pre-nms
+  max_candidates: 6 #pre-nms
 
 roi:
   output_size: 32
@@ -40,20 +40,25 @@ roi:
   max_crop: 48
 
 inference:
-  backend: "mock"
-  model_path: "model/pellet_cls.onnx"
+  backend: "onnxruntime"
+  model_path: "model/pellet_cls.onnx" #通用路径，下方路径为空时使用，统一为onnx
   device: "GPU"
   input_blob_name: "input"
   output_blob_name: "output"
-  trt_engine_path: "model/pellet_cls.engine"
-  openvino_model_path: "model/pellet_cls.xml"
-  ncnn_param_path: "model/pellet_cls.param"
-  ncnn_bin_path: "model/pellet_cls.bin"
+  input_width: 32
+  input_height: 32
+  batch_size: 1
+  precision: "fp32" # fp32/int8
+  int8_model_path: "" # 空则回退 model_path
+  engine_path: "" #INT8 + 空engine_path 直接失败
+  trt_require_prebuilt_engine: 0 # 0:允许自动构建, 1:engine不存在时直接失败
+  openvino_model_path: ""
+  ncnn_param_path: ""
+  ncnn_bin_path: ""
   num_threads: 1
-  use_fp16: 0
   positive_threshold: 0.75
   weak_threshold: 0.45
-  max_candidates: 10 #post-nms
+  max_candidates: 2 #post-nms
 
 debug:
   enable: 0
@@ -61,5 +66,5 @@ debug:
   modules_mask: 0
   # 手动位掩码覆盖：
   # 0   -> 不手动覆盖，走 enable + level
-  # 非0 -> 按位启用并覆盖 enable/level（例如 1=仅capture，3=capture+morphology）
-  # bit0:capture bit1:morphology bit2:pipeline_stats bit3:thread_status bit4:window bit5:mask(预留)
+  # 非0 -> 按位启用并覆盖 enable/level（例如 1=仅capture，33=capture+infer）
+  # bit0:capture bit1:morphology bit2:pipeline_stats bit3:thread_status bit4:window bit5:infer

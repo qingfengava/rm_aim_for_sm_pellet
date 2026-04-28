@@ -20,7 +20,9 @@ namespace {
 
 class AlwaysPositiveClassifier final : public pellet::infer::IClassifier {
  public:
-  bool Init(const pellet::InferenceConfig&) override {
+  bool Init(
+      const pellet::InferenceConfig&,
+      const pellet::infer::InferRuntimeOptions&) override {
     return true;
   }
 
@@ -70,7 +72,9 @@ pellet::PelletConfig MakeLenientConfig() {
 
 TEST(DetectWorkerThreadingTest, StartStopKeepsHeartbeatAliveWithoutFrames) {
   auto classifier = std::make_shared<AlwaysPositiveClassifier>();
-  ASSERT_TRUE(classifier->Init(pellet::InferenceConfig{}));
+  ASSERT_TRUE(classifier->Init(
+      pellet::InferenceConfig{},
+      pellet::infer::InferRuntimeOptions{}));
 
   pellet::PelletConfig config = MakeLenientConfig();
   pellet::detector::DetectorPipeline pipeline(config, classifier);
@@ -99,7 +103,9 @@ TEST(DetectWorkerThreadingTest, StartStopKeepsHeartbeatAliveWithoutFrames) {
 
 TEST(DetectWorkerThreadingTest, ProducesDetectionsWhenFramesArrive) {
   auto classifier = std::make_shared<AlwaysPositiveClassifier>();
-  ASSERT_TRUE(classifier->Init(pellet::InferenceConfig{}));
+  ASSERT_TRUE(classifier->Init(
+      pellet::InferenceConfig{},
+      pellet::infer::InferRuntimeOptions{}));
 
   pellet::PelletConfig config = MakeLenientConfig();
   pellet::detector::DetectorPipeline pipeline(config, classifier);

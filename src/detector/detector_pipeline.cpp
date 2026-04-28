@@ -27,7 +27,7 @@ std::string ToLower(std::string text) {
   return text;
 }
 
-constexpr int kMaxPreNmsCandidates = 20;
+constexpr int kMaxPreNmsCandidates = 8;
 
 }  // namespace
 

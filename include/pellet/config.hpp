@@ -37,7 +37,7 @@ struct MotionConfig {
   float motion_score_min{0.08F};
   bool nms_enable{true};
   float nms_iou{0.25F};
-  int max_candidates{20};
+  int max_candidates{6};
 };
 
 struct RoiConfig {
@@ -48,20 +48,25 @@ struct RoiConfig {
 };
 
 struct InferenceConfig {
-  std::string backend{"mock"};
+  std::string backend{"onnxruntime"};
   std::string model_path{"model/pellet_cls.onnx"};
   std::string device{"CPU"};
   std::string input_blob_name{"input"};
   std::string output_blob_name{"output"};
-  std::string trt_engine_path{"model/pellet_cls.engine"};
+  int input_width{32};
+  int input_height{32};
+  int batch_size{1};
+  std::string precision{"fp32"};
+  std::string int8_model_path{""};
+  std::string engine_path{""};
+  bool trt_require_prebuilt_engine{false};
   std::string openvino_model_path{"model/pellet_cls.xml"};
   std::string ncnn_param_path{"model/pellet_cls.param"};
   std::string ncnn_bin_path{"model/pellet_cls.bin"};
   int num_threads{1};
-  bool use_fp16{false};
   float positive_threshold{0.75F};
   float weak_threshold{0.45F};
-  int max_candidates{10};
+  int max_candidates{2};
 };
 
 struct DebugConfig {

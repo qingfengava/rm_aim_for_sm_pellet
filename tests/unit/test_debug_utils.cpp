@@ -31,7 +31,7 @@ TEST(DebugUtilsTest, LevelOneEnablesCapturePipelineAndThreadStatus) {
   EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kThreadStatus));
   EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kMorphology));
   EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kShowWindow));
-  EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kShowMask));
+  EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kInferLogs));
 }
 
 TEST(DebugUtilsTest, ModulesMaskHasHigherPriorityThanLevel) {
@@ -39,11 +39,11 @@ TEST(DebugUtilsTest, ModulesMaskHasHigherPriorityThanLevel) {
   config.debug.enable = true;
   config.debug.level = 2;
   config.debug.modules_mask = DebugFeatureMask(DebugFeature::kMorphology) |
-                              DebugFeatureMask(DebugFeature::kShowMask);
+                              DebugFeatureMask(DebugFeature::kInferLogs);
 
   EXPECT_TRUE(pellet::utils::IsAnyDebugEnabled(config));
   EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kMorphology));
-  EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kShowMask));
+  EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kInferLogs));
   EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kCaptureLogs));
   EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kPipelineStats));
   EXPECT_FALSE(pellet::utils::IsDebugEnabled(config, DebugFeature::kThreadStatus));
@@ -60,7 +60,7 @@ TEST(DebugUtilsTest, LevelTwoEnablesAllFeaturesWhenMaskIsZero) {
   EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kPipelineStats));
   EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kThreadStatus));
   EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kShowWindow));
-  EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kShowMask));
+  EXPECT_TRUE(pellet::utils::IsDebugEnabled(config, DebugFeature::kInferLogs));
 }
 
 }  // namespace
