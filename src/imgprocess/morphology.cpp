@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include <opencv2/imgproc.hpp>
-#include <wust_vl/common/utils/logger.hpp>
 
 namespace pellet::imgprocess {
 namespace {
@@ -76,7 +75,16 @@ MaskStats AnalyzeMask(const cv::Mat& mask_bin) {
 
 }  // namespace
 
-cv::Mat ApplyOpen(const cv::Mat& binary_mask, int kernel_size, int iterations, bool debug_mode) {
+cv::Mat ApplyOpen(
+    const cv::Mat& binary_mask,
+    int kernel_size,
+    int iterations,
+    bool debug_mode,
+    MorphologyStats* stats) {
+  (void)debug_mode;
+  if (stats != nullptr) {
+    *stats = MorphologyStats{};
+  }
   cv::Mat mask_bin = NormalizeToBinaryMask(binary_mask);
   if (mask_bin.empty()) {
     return {};
@@ -98,20 +106,24 @@ cv::Mat ApplyOpen(const cv::Mat& binary_mask, int kernel_size, int iterations, b
 
   //安全回退：当开操作导致前景像素过度丢失时，回退到原始二值掩码。
   const int before_nonzero = cv::countNonZero(mask_bin);
+  if (stats != nullptr) {
+    stats->before_nonzero = before_nonzero;
+  }
   if (before_nonzero <= 0) {
     return opened;
   }
 
   const int after_nonzero = cv::countNonZero(opened);
+  if (stats != nullptr) {
+    stats->after_nonzero = after_nonzero;
+  }
   constexpr double kMinKeepRatio = 0.35;
   const double keep_ratio = static_cast<double>(after_nonzero) / static_cast<double>(before_nonzero);
   if (keep_ratio < kMinKeepRatio) {
-    if (debug_mode) {
-      WUST_WARN("morphology") << "ApplyOpen fallback triggered: foreground keep ratio too low "
-                              << "(before=" << before_nonzero
-                              << ", after=" << after_nonzero
-                              << ", ratio=" << keep_ratio
-                              << ", threshold=" << kMinKeepRatio << ")";
+    if (stats != nullptr) {
+      stats->fallback_reason = MorphFallbackReason::kOpenKeepRatioTooLow;
+      stats->metric_primary = keep_ratio;
+      stats->metric_secondary = kMinKeepRatio;
     }
     return mask_bin;
   }
@@ -119,7 +131,16 @@ cv::Mat ApplyOpen(const cv::Mat& binary_mask, int kernel_size, int iterations, b
   return opened;
 }
 
-cv::Mat ApplyClose(const cv::Mat& binary_mask, int kernel_size, int iterations, bool debug_mode) {
+cv::Mat ApplyClose(
+    const cv::Mat& binary_mask,
+    int kernel_size,
+    int iterations,
+    bool debug_mode,
+    MorphologyStats* stats) {
+  (void)debug_mode;
+  if (stats != nullptr) {
+    *stats = MorphologyStats{};
+  }
   cv::Mat mask_bin = NormalizeToBinaryMask(binary_mask);
   if (mask_bin.empty()) {
     return {};
@@ -141,10 +162,18 @@ cv::Mat ApplyClose(const cv::Mat& binary_mask, int kernel_size, int iterations, 
 
   //安全回退：当闭操作导致前景像素过度增长或组件过度合并时，回退到原始二值掩码。
   const MaskStats before = AnalyzeMask(mask_bin);
+  if (stats != nullptr) {
+    stats->before_nonzero = before.nonzero;
+    stats->before_components = before.components;
+  }
   if (before.nonzero <= 0) {
     return closed;
   }
   const MaskStats after = AnalyzeMask(closed);
+  if (stats != nullptr) {
+    stats->after_nonzero = after.nonzero;
+    stats->after_components = after.components;
+  }
 
   const double r_fg = static_cast<double>(after.nonzero) / static_cast<double>(before.nonzero);
   const double r_cand =
@@ -163,17 +192,10 @@ cv::Mat ApplyClose(const cv::Mat& binary_mask, int kernel_size, int iterations, 
       ((r_cand < kMinCandidateKeepRatio) && (r_fg > kCandidateDropFgGrowthGate));
 
   if (fallback) {
-    if (debug_mode) {
-      WUST_WARN("morphology") << "ApplyClose fallback triggered: possible over-merge "
-                              << "(fg_before=" << before.nonzero
-                              << ", fg_after=" << after.nonzero
-                              << ", r_fg=" << r_fg
-                              << ", cand_before=" << before.components
-                              << ", cand_after=" << after.components
-                              << ", r_cand=" << r_cand
-                              << ", largest_after=" << after.largest_component_area
-                              << ", r_largest=" << r_largest
-                              << ")";
+    if (stats != nullptr) {
+      stats->fallback_reason = MorphFallbackReason::kCloseOverMerge;
+      stats->metric_primary = r_fg;
+      stats->metric_secondary = r_cand;
     }
     return mask_bin;
   }

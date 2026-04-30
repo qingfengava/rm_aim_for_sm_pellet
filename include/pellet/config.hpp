@@ -21,20 +21,35 @@ struct DetectorConfig {
 struct MotionConfig {
   int gaussian_ksize{3};
   double gaussian_sigma{0.8};
-  bool adaptive_threshold{true};
-  int diff_threshold{18};
-  int diff_threshold_min{10};
-  int diff_threshold_max{35};
+
+  // 背景减除
+  std::string bg_backend{"knn"};
+  int bg_history{30};
+  double bg_var_threshold{14.0};
+  double bg_learning_rate{-1.0};
+  int bg_downsample{2};
+
+  // 全局扰动保护
+  double global_fg_ratio_max{0.50};
+  double global_response_attenuation{0.25};
+
+  // 形态学
   bool morph_enable{false};
   std::string morph_type{"open"};
   int morph_kernel{3};
   int morph_iters{1};
+
+  // 运动确认
+  bool motion_confirm_enable{true};
+  int motion_confirm_threshold{10};
+
+  // 候选过滤
   int area_min{3};
-  int area_max{120};
+  int area_max{150};
   float ratio_max{4.0F};
-  float extent_min{0.2F};
-  float contrast_min{0.06F};
-  float motion_score_min{0.08F};
+  float extent_min{0.15F};
+  float contrast_min{0.04F};
+  float motion_score_min{0.04F};
   bool nms_enable{true};
   float nms_iou{0.25F};
   int max_candidates{6};
@@ -70,8 +85,6 @@ struct InferenceConfig {
 };
 
 struct DebugConfig {
-  bool enable{false};
-  int level{0};
   uint32_t modules_mask{0};
 };
 

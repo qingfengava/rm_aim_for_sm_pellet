@@ -21,7 +21,9 @@ class DetectWorker {
       DetectorPipeline* pipeline,
       int frame_pop_timeout_ms = 100,
       bool thread_monitor_enable = true,
-      bool show_thread_status = false);
+      bool show_thread_status = false,
+      bool enable_pipeline_stats = false,
+      bool show_stats_1s = false);
   ~DetectWorker();
 
   void Start();
@@ -39,6 +41,8 @@ class DetectWorker {
   std::atomic<bool> running_{false};
   bool thread_monitor_enable_{true};
   bool show_thread_status_{false};
+  bool enable_pipeline_stats_{false};
+  bool show_stats_1s_{false};
   wust_vl::common::concurrency::MonitoredThread::Ptr worker_thread_;
 
   std::mutex result_mutex_;

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -76,6 +77,8 @@ class CaptureWorker {
   int software_trigger_interval_ms_{0};
   std::thread software_trigger_thread_;
   std::atomic<uint32_t> frame_id_{0};
+  std::mutex unsupported_pixel_mutex_;
+  uint64_t unsupported_pixel_drop_total_{0};
 };
 
 }  // namespace pellet::detector

@@ -17,6 +17,7 @@ class NcnnClassifier final : public IClassifier {
 
   bool Init(const InferenceConfig& config, const InferRuntimeOptions& runtime_options) override;
   std::vector<float> Infer(const std::vector<cv::Mat>& rois) override;
+  InferRuntimeState GetRuntimeState() const override;
 
  private:
   struct Impl;

@@ -37,7 +37,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../wust_vl/cmake")
 endif()
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc video)
 find_package(HikSDK REQUIRED)
 find_package(wust_vl CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
@@ -68,8 +68,8 @@ set(PELLET_CORE_SOURCES
     src/detector/detect_worker.cpp
     src/detector/frame_queue.cpp
     src/imgprocess/preprocess.cpp
-    src/imgprocess/three_frame_diff.cpp
-    src/imgprocess/binarizer.cpp
+    src/imgprocess/bg_subtractor.cpp
+    src/imgprocess/motion_confirm.cpp
     src/imgprocess/morphology.cpp
     src/imgprocess/candidate_extractor.cpp
     src/imgprocess/candidate_filter.cpp
@@ -81,7 +81,7 @@ set(PELLET_CORE_SOURCES
     src/infer/openvino_classifier.cpp
     src/infer/ncnn_classifier.cpp
     src/utils/debug_utils.cpp
-    src/utils/image_utils.cpp
+    src/utils/infer_utils.cpp
 )
 
 add_library(pellet_core ${PELLET_CORE_SOURCES})
@@ -249,7 +249,7 @@ if(BUILD_TESTING)
             add_test(NAME ${test_name} COMMAND ${test_name})
         endfunction()
 
-        pellet_add_gtest(test_three_frame_diff tests/unit/test_three_frame_diff.cpp)
+        pellet_add_gtest(test_bg_subtractor tests/unit/test_bg_subtractor.cpp)
         pellet_add_gtest(test_debug_utils tests/unit/test_debug_utils.cpp)
         pellet_add_gtest(test_candidate_filter tests/unit/test_candidate_filter.cpp)
         pellet_add_gtest(test_candidate_extractor tests/unit/test_candidate_extractor.cpp)

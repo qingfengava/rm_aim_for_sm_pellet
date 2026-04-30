@@ -1,6 +1,7 @@
 #include "pellet/infer/openvino_classifier.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <exception>
 #include <filesystem>
@@ -11,6 +12,9 @@
 #include <opencv2/core.hpp>
 #include <wust_vl/common/utils/logger.hpp>
 
+#include "pellet/utils/infer_utils.hpp"
+#include "pellet/utils/debug_utils.hpp"
+
 #if defined(PELLET_WITH_OPENVINO)
 #include <wust_vl/ml_net/openvino/openvino_net.hpp>
 #endif
@@ -19,21 +23,13 @@ namespace pellet::infer {
 namespace {
 
 constexpr const char* kBackendName = "openvino";
-
-int ResolveBatchSize(const int configured_batch_size) {
-  return std::max(1, configured_batch_size);
-}
-
-std::string ToLower(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(), [](const unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return text;
-}
-
-bool IsSupportedPrecision(const std::string& precision) {
-  return precision == "fp32" || precision == "int8";
-}
+constexpr const char* kWarnKeyCreateRequestFailed = "openvino_create_request_failed";
+constexpr const char* kWarnKeyValidMaskNotReady = "openvino_valid_mask_not_ready";
+constexpr const char* kWarnKeyRequestRetry = "openvino_request_retry";
+constexpr const char* kWarnKeyInferFail = "openvino_infer_fail";
+constexpr const char* kWarnKeyCooldown = "openvino_cooldown";
+constexpr int kInferFailureCooldownThreshold = 3;
+constexpr auto kInferFailureCooldown = std::chrono::milliseconds(800);
 
 void LogInitDebug(
     const InferenceConfig& config,
@@ -44,14 +40,14 @@ void LogInitDebug(
     return;
   }
   WUST_INFO("infer") << "backend=" << kBackendName
-                     << ", precision=" << ToLower(config.precision)
-                     << ", batch_size=" << ResolveBatchSize(config.batch_size)
+                     << ", precision=" << InferToLower(config.precision)
+                     << ", batch_size=" << InferResolveBatchSize(config.batch_size)
                      << ", model_resolved_path=" << model_resolved_path
                      << ", actual_mode=" << actual_mode;
 }
 
 std::string ResolveModelPath(const InferenceConfig& config) {
-  const std::string precision = ToLower(config.precision);
+  const std::string precision = InferToLower(config.precision);
   std::vector<std::string> candidates;
   if (precision == "int8") {
     if (!config.openvino_model_path.empty()) {
@@ -80,67 +76,8 @@ std::string ResolveModelPath(const InferenceConfig& config) {
   return candidates.empty() ? std::string() : candidates.front();
 }
 
-bool FillInputTensor(const cv::Mat& roi, float* dst, std::size_t expected_elements) {
-  if (roi.empty() || roi.type() != CV_8UC1 || dst == nullptr || expected_elements == 0U) {
-    return false;
-  }
-
-  const std::size_t base_elements = static_cast<std::size_t>(roi.total());
-  if (base_elements == 0U) {
-    return false;
-  }
-
-  constexpr float kInv255 = 1.0F / 255.0F;
-  auto copy_plane = [&](float* out) {
-    if (roi.isContinuous()) {
-      const uint8_t* src = roi.ptr<uint8_t>();
-      for (std::size_t i = 0; i < base_elements; ++i) {
-        out[i] = static_cast<float>(src[i]) * kInv255;
-      }
-      return;
-    }
-    std::size_t index = 0U;
-    for (int y = 0; y < roi.rows; ++y) {
-      const uint8_t* row = roi.ptr<uint8_t>(y);
-      for (int x = 0; x < roi.cols; ++x) {
-        out[index++] = static_cast<float>(row[x]) * kInv255;
-      }
-    }
-  };
-
-  if (expected_elements == base_elements) {
-    copy_plane(dst);
-    return true;
-  }
-  if (expected_elements > base_elements && expected_elements % base_elements == 0U) {
-    const std::size_t repeat = expected_elements / base_elements;
-    for (std::size_t i = 0; i < repeat; ++i) {
-      copy_plane(dst + static_cast<std::ptrdiff_t>(i * base_elements));
-    }
-    return true;
-  }
-
-  std::fill_n(dst, expected_elements, 0.0F);
-  const std::size_t copy_count = std::min(expected_elements, base_elements);
-  if (roi.isContinuous()) {
-    const uint8_t* src = roi.ptr<uint8_t>();
-    for (std::size_t i = 0; i < copy_count; ++i) {
-      dst[i] = static_cast<float>(src[i]) * kInv255;
-    }
-    return true;
-  }
-  std::size_t index = 0U;
-  for (int y = 0; y < roi.rows && index < copy_count; ++y) {
-    const uint8_t* row = roi.ptr<uint8_t>(y);
-    for (int x = 0; x < roi.cols && index < copy_count; ++x) {
-      dst[index++] = static_cast<float>(row[x]) * kInv255;
-    }
-  }
-  return true;
-}
-
 #if defined(PELLET_WITH_OPENVINO)
-float ExtractScore(const ov::Tensor& output) {
+float ExtractScoreOv(const ov::Tensor& output) {
   if (output.get_size() == 0) {
     return 0.0F;
   }
@@ -152,7 +89,7 @@ float ExtractScore(const ov::Tensor& output) {
   return std::clamp(score, 0.0F, 1.0F);
 }
 
-float ExtractBatchScoreAt(const ov::Tensor& output, std::size_t batch_size, std::size_t batch_index) {
+float ExtractBatchScoreAtOv(const ov::Tensor& output, std::size_t batch_size, std::size_t batch_index) {
   batch_size = std::max<std::size_t>(1, batch_size);
   if (output.get_size() == 0 || output.get_element_type() != ov::element::f32) {
     return 0.0F;
@@ -161,10 +98,10 @@ float ExtractBatchScoreAt(const ov::Tensor& output, std::size_t batch_size, std:
   const float* out = output.data<const float>();
   const std::size_t total = output.get_size();
   if (batch_size == 1U) {
-    return batch_index == 0U ? ExtractScore(output) : 0.0F;
+    return batch_index == 0U ? ExtractScoreOv(output) : 0.0F;
   }
   if (total < batch_size) {
-    return ExtractScore(output);
+    return ExtractScoreOv(output);
   }
   const std::size_t stride = std::max<std::size_t>(1, total / batch_size);
   const std::size_t start = batch_index * stride;
@@ -184,6 +121,9 @@ struct OpenVinoClassifier::Impl {
   bool initialized{false};
   bool runtime_available{false};
   bool debug_log_infer{false};
+  int consecutive_failures{0};
+  std::chrono::steady_clock::time_point cooldown_until{};
+  bool degraded_last_call{false};
   bool batch_disabled{false};
 #if defined(PELLET_WITH_OPENVINO)
   std::unique_ptr<wust_vl::ml_net::OpenvinoNet> net;
@@ -207,6 +147,9 @@ bool OpenVinoClassifier::Init(
   impl_->initialized = true;
   impl_->runtime_available = false;
   impl_->debug_log_infer = runtime_options.debug_log_init;
+  impl_->consecutive_failures = 0;
+  impl_->cooldown_until = std::chrono::steady_clock::time_point{};
+  impl_->degraded_last_call = false;
   impl_->batch_disabled = false;
 #if defined(PELLET_WITH_OPENVINO)
   impl_->input_tensor_scratch_ready = false;
@@ -215,8 +158,8 @@ bool OpenVinoClassifier::Init(
 #endif
 
 #if defined(PELLET_WITH_OPENVINO)
-  const std::string precision = ToLower(config_.precision);
-  if (!IsSupportedPrecision(precision)) {
+  const std::string precision = InferToLower(config_.precision);
+  if (!InferIsSupportedPrecision(precision)) {
     WUST_ERROR("openvino_classifier")
         << "unsupported precision for OpenVINO backend: " << config_.precision;
     return false;
@@ -259,14 +202,14 @@ bool OpenVinoClassifier::Init(
       impl_->net.reset();
       return false;
     }
-    impl_->batch_size = ResolveBatchSize(config_.batch_size);
+    impl_->batch_size = InferResolveBatchSize(config_.batch_size);
     impl_->input_tensor_scratch = ov::Tensor(ov::element::f32, impl_->input_shape);
     impl_->input_tensor_scratch_ready = true;
     impl_->infer_request = std::make_unique<ov::InferRequest>(impl_->net->createInferRequest());
-    impl_->valid_mask_scratch.assign(//有效ROI标记
+    impl_->valid_mask_scratch.assign(
         std::max<std::size_t>(
             std::max<std::size_t>(1U, impl_->input_shape.empty() ? 1U : impl_->input_shape[0]),
-            static_cast<std::size_t>(ResolveBatchSize(config_.batch_size))),
+            static_cast<std::size_t>(InferResolveBatchSize(config_.batch_size))),
         static_cast<uint8_t>(0));
     const bool true_batch_mode = impl_->input_shape[0] > 1U;
     LogInitDebug(
@@ -287,7 +230,9 @@ bool OpenVinoClassifier::Init(
 }
 
 std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
+  impl_->degraded_last_call = false;
   if (!impl_->initialized || !impl_->runtime_available) {
+    impl_->degraded_last_call = true;
     return std::vector<float>(rois.size(), 0.0F);
   }
 
@@ -295,23 +240,64 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
 
 #if defined(PELLET_WITH_OPENVINO)
   if (impl_->net == nullptr || !impl_->input_tensor_scratch_ready) {
+    impl_->degraded_last_call = true;
+    return scores;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (impl_->cooldown_until > now) {
+    impl_->degraded_last_call = true;
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyCooldown)) {
+      const auto cooldown_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   impl_->cooldown_until - now)
+                                   .count();
+      WUST_WARN("infer")
+          << "backend=" << kBackendName
+          << ", infer temporarily disabled due to recent failures, cooldown_ms="
+          << cooldown_ms;
+    }
     return scores;
   }
   if (impl_->infer_request == nullptr) {
     try {
       impl_->infer_request = std::make_unique<ov::InferRequest>(impl_->net->createInferRequest());
     } catch (const std::exception& e) {
-      if (impl_->debug_log_infer) {
-        WUST_WARN("infer")
-            << "backend=" << kBackendName
-            << ", create infer request failed, err=" << e.what();
+      impl_->degraded_last_call = true;
+      ++impl_->consecutive_failures;
+      if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+        impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+      }
+      if (utils::ShouldLogRateLimited("infer", kWarnKeyCreateRequestFailed)) {
+        if (impl_->debug_log_infer) {
+          WUST_WARN("infer")
+              << "backend=" << kBackendName
+              << ", create infer request failed"
+              << ", consecutive_failures=" << impl_->consecutive_failures
+              << ", cooldown_active="
+              << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0)
+              << ", err=" << e.what();
+        } else {
+          WUST_WARN("infer")
+              << "backend=" << kBackendName
+              << ", create infer request failed"
+              << ", consecutive_failures=" << impl_->consecutive_failures
+              << ", cooldown_active="
+              << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
+        }
       }
       return scores;
     } catch (...) {
-      if (impl_->debug_log_infer) {
+      impl_->degraded_last_call = true;
+      ++impl_->consecutive_failures;
+      if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+        impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+      }
+      if (utils::ShouldLogRateLimited("infer", kWarnKeyCreateRequestFailed)) {
         WUST_WARN("infer")
             << "backend=" << kBackendName
-            << ", create infer request failed";
+            << ", create infer request failed"
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
       }
       return scores;
     }
@@ -323,7 +309,7 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
   }
 
   const std::size_t requested_chunk_size =
-      static_cast<std::size_t>(ResolveBatchSize(impl_->batch_size));
+      static_cast<std::size_t>(InferResolveBatchSize(impl_->batch_size));
   const std::size_t model_batch_size =
       (impl_->input_shape.empty() ? 1U : std::max<std::size_t>(1U, impl_->input_shape[0]));
   const bool model_supports_true_batch = model_batch_size > 1U && !impl_->batch_disabled;
@@ -331,7 +317,8 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
       model_supports_true_batch ? model_batch_size
                                 : requested_chunk_size;
   if (model_supports_true_batch && impl_->valid_mask_scratch.size() < chunk_size) {
-    if (impl_->debug_log_infer) {
+    impl_->degraded_last_call = true;
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyValidMaskNotReady)) {
       WUST_WARN("infer")
           << "backend=" << kBackendName
           << ", valid_mask_scratch not ready, valid_mask=" << impl_->valid_mask_scratch.size()
@@ -347,16 +334,22 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
     try {
       return impl_->net->infer(input_tensor, *impl_->infer_request);
     } catch (const std::exception& e) {
-      if (impl_->debug_log_infer) {
-        WUST_WARN("infer")
-            << "backend=" << kBackendName
-            << ", infer request failed once, recreate and retry, err=" << e.what();
+      if (utils::ShouldLogRateLimited("infer", kWarnKeyRequestRetry)) {
+        if (impl_->debug_log_infer) {
+          WUST_WARN("infer")
+              << "backend=" << kBackendName
+              << ", infer request failed once, recreate and retry, err=" << e.what();
+        } else {
+          WUST_WARN("infer")
+              << "backend=" << kBackendName
+              << ", infer request failed once, recreate and retry";
+        }
       }
       impl_->infer_request.reset();
       impl_->infer_request = std::make_unique<ov::InferRequest>(impl_->net->createInferRequest());
       return impl_->net->infer(input_tensor, *impl_->infer_request);
     } catch (...) {
-      if (impl_->debug_log_infer) {
+      if (utils::ShouldLogRateLimited("infer", kWarnKeyRequestRetry)) {
         WUST_WARN("infer")
             << "backend=" << kBackendName
             << ", infer request failed once, recreate and retry";
@@ -405,7 +398,7 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
           if (impl_->valid_mask_scratch[i] == 0U) {
             continue;
           }
-          scores[chunk_begin + i] = ExtractBatchScoreAt(output_tensor, run_batch, i);
+          scores[chunk_begin + i] = ExtractBatchScoreAtOv(output_tensor, run_batch, i);
         }
         exception_from_batch_path = false;
         continue;
@@ -423,30 +416,58 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
         }
 
         const ov::Tensor output_tensor = infer_with_request_retry(impl_->input_tensor_scratch);
-        scores[chunk_begin + i] = ExtractScore(output_tensor);
+        scores[chunk_begin + i] = ExtractScoreOv(output_tensor);
       }
     }
+    impl_->consecutive_failures = 0;
+    impl_->cooldown_until = std::chrono::steady_clock::time_point{};
   } catch (const std::exception& e) {
+    impl_->degraded_last_call = true;
+    ++impl_->consecutive_failures;
+    if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+      impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+    }
     if (exception_from_batch_path) {
       impl_->batch_disabled = true;
     }
-    if (impl_->debug_log_infer) {
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
+      if (impl_->debug_log_infer) {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", batch_disabled=" << (impl_->batch_disabled ? 1 : 0)
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0)
+            << ", err=" << e.what();
+      } else {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", batch_disabled=" << (impl_->batch_disabled ? 1 : 0)
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
+      }
+    }
+    return scores;
+  } catch (...) {
+    impl_->degraded_last_call = true;
+    ++impl_->consecutive_failures;
+    if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+      impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+    }
+    if (exception_from_batch_path) {
+      impl_->batch_disabled = true;
+    }
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
       WUST_WARN("infer")
           << "backend=" << kBackendName
           << ", infer failed once, fallback remaining samples to 0.0"
           << ", batch_disabled=" << (impl_->batch_disabled ? 1 : 0)
-          << ", err=" << e.what();
-    }
-    return scores;
-  } catch (...) {
-    if (exception_from_batch_path) {
-      impl_->batch_disabled = true;
-    }
-    if (impl_->debug_log_infer) {
-      WUST_WARN("infer")
-          << "backend=" << kBackendName
-          << ", infer failed once, fallback remaining samples to 0.0"
-          << ", batch_disabled=" << (impl_->batch_disabled ? 1 : 0);
+          << ", consecutive_failures=" << impl_->consecutive_failures
+          << ", cooldown_active="
+          << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
     }
     return scores;
   }
@@ -454,6 +475,14 @@ std::vector<float> OpenVinoClassifier::Infer(const std::vector<cv::Mat>& rois) {
 #endif
 
   return scores;
+}
+
+InferRuntimeState OpenVinoClassifier::GetRuntimeState() const {
+  InferRuntimeState state;
+  state.consecutive_failures = impl_->consecutive_failures;
+  state.cooldown_active = impl_->cooldown_until > std::chrono::steady_clock::now();
+  state.degraded_last_call = impl_->degraded_last_call;
+  return state;
 }
 
 }  // namespace pellet::infer

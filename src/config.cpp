@@ -69,14 +69,24 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
   if (!motion.empty()) {
     ReadIfPresent(motion, "gaussian_ksize", &config->motion.gaussian_ksize);
     ReadIfPresent(motion, "gaussian_sigma", &config->motion.gaussian_sigma);
-    ReadBoolIfPresent(motion, "adaptive_threshold", &config->motion.adaptive_threshold);
-    ReadIfPresent(motion, "diff_threshold", &config->motion.diff_threshold);
-    ReadIfPresent(motion, "diff_threshold_min", &config->motion.diff_threshold_min);
-    ReadIfPresent(motion, "diff_threshold_max", &config->motion.diff_threshold_max);
+
+    ReadIfPresent(motion, "bg_backend", &config->motion.bg_backend);
+    ReadIfPresent(motion, "bg_history", &config->motion.bg_history);
+    ReadIfPresent(motion, "bg_var_threshold", &config->motion.bg_var_threshold);
+    ReadIfPresent(motion, "bg_learning_rate", &config->motion.bg_learning_rate);
+    ReadIfPresent(motion, "bg_downsample", &config->motion.bg_downsample);
+
+    ReadIfPresent(motion, "global_fg_ratio_max", &config->motion.global_fg_ratio_max);
+    ReadIfPresent(motion, "global_response_attenuation", &config->motion.global_response_attenuation);
+
     ReadBoolIfPresent(motion, "morph_enable", &config->motion.morph_enable);
     ReadIfPresent(motion, "morph_type", &config->motion.morph_type);
     ReadIfPresent(motion, "morph_kernel", &config->motion.morph_kernel);
     ReadIfPresent(motion, "morph_iters", &config->motion.morph_iters);
+
+    ReadBoolIfPresent(motion, "motion_confirm_enable", &config->motion.motion_confirm_enable);
+    ReadIfPresent(motion, "motion_confirm_threshold", &config->motion.motion_confirm_threshold);
+
     ReadIfPresent(motion, "area_min", &config->motion.area_min);
     ReadIfPresent(motion, "area_max", &config->motion.area_max);
     ReadIfPresent(motion, "ratio_max", &config->motion.ratio_max);
@@ -124,8 +134,6 @@ bool LoadConfigFromYaml(const std::string& path, PelletConfig* config) {
 
   const cv::FileNode debug = fs["debug"];
   if (!debug.empty()) {
-    ReadBoolIfPresent(debug, "enable", &config->debug.enable);
-    ReadIfPresent(debug, "level", &config->debug.level);
     ReadUInt32IfPresent(debug, "modules_mask", &config->debug.modules_mask);
   }
 

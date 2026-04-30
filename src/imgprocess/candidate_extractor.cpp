@@ -22,29 +22,6 @@ struct LabelAccumulator {
   double sum_wy{0.0};
 };
 
-// 统一转单通道 + uint8
-cv::Mat ToSingleChannelU8(const cv::Mat& src) {
-  if (src.empty()) {
-    return {};
-  }
-
-  cv::Mat gray;
-  if (src.channels() == 1) {
-    gray = src;
-  } else {
-    cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
-  }
-
-  cv::Mat out;
-  if (gray.type() == CV_8UC1) {
-    out = gray;
-  } else {
-    gray.convertTo(out, CV_8UC1);
-  }
-  return out;
-}
-
-// 以bbox为中心，向外扩展一定比例的区域，计算环形背景的平均亮度
 double ComputeRingBackgroundMean(
     const cv::Mat& gray_u8,
     const cv::Mat& binary_mask_u8,
@@ -85,23 +62,17 @@ double ComputeRingBackgroundMean(
     }
   }
 
-  //回退机制
   if (count_bg < kMinBgPixels) {
     return -1.0;
   }
   return sum_bg / static_cast<double>(count_bg);
 }
 
-//打分
 float ComputeRankScore(float motion_score, float local_contrast, float extent, float circularity) {
-  const float motion_term = std::clamp(motion_score, 0.0F, 1.0F);
-  const float contrast_term = std::clamp(local_contrast, 0.0F, 1.0F);
-  const float extent_term = std::clamp(extent, 0.0F, 1.0F);
-  const float circularity_term = std::clamp(circularity, 0.0F, 1.0F);
-  return 0.45F * motion_term
-      + 0.35F * contrast_term
-      + 0.10F * extent_term
-      + 0.10F * circularity_term;
+  return 0.45F * std::clamp(motion_score, 0.0F, 1.0F)
+       + 0.35F * std::clamp(local_contrast, 0.0F, 1.0F)
+       + 0.10F * std::clamp(extent, 0.0F, 1.0F)
+       + 0.10F * std::clamp(circularity, 0.0F, 1.0F);
 }
 
 }  // namespace
@@ -115,22 +86,20 @@ std::vector<Candidate> ExtractCandidates(
     return candidates;
   }
 
-  const cv::Mat gray_u8 = ToSingleChannelU8(gray_frame);
-  const cv::Mat motion_u8 = ToSingleChannelU8(motion_response);
-  cv::Mat mask_u8 = ToSingleChannelU8(binary_mask);
-  if (gray_u8.empty() || motion_u8.empty() || mask_u8.empty()) {
-    return candidates;
-  }
+  // Pipeline 保证输入已经是 CV_8UC1，直接使用
+  const cv::Mat& gray_u8 = gray_frame;
+  const cv::Mat& motion_u8 = motion_response;
+  const cv::Mat& mask_u8 = binary_mask;
+
   if (gray_u8.size() != motion_u8.size() || gray_u8.size() != mask_u8.size()) {
     return candidates;
   }
 
-  cv::threshold(mask_u8, mask_u8, 0, 255, cv::THRESH_BINARY);
-
   cv::Mat labels;
   cv::Mat stats;
   cv::Mat centroids;
-  const int num_labels = cv::connectedComponentsWithStats(mask_u8, labels, stats, centroids, 8, CV_32S);
+  const int num_labels =
+      cv::connectedComponentsWithStats(mask_u8, labels, stats, centroids, 8, CV_32S);
   if (num_labels <= 1) {
     return candidates;
   }
@@ -138,47 +107,50 @@ std::vector<Candidate> ExtractCandidates(
   candidates.reserve(std::max(0, num_labels - 1));
   std::vector<LabelAccumulator> acc(static_cast<std::size_t>(num_labels));
 
-  // 遍历每个像素，根据标签累积统计信息
-  for (int y = 0; y < labels.rows; ++y) {
-    const int* label_row = labels.ptr<int>(y);
-    const std::uint8_t* gray_row = gray_u8.ptr<std::uint8_t>(y);
-    const std::uint8_t* motion_row = motion_u8.ptr<std::uint8_t>(y);
-    for (int x = 0; x < labels.cols; ++x) {
-      const int label = label_row[x];
-      if (label <= 0) {
-        continue;
-      }
-
-      LabelAccumulator& a = acc[static_cast<std::size_t>(label)];
-      const double gray_value = static_cast<double>(gray_row[x]);
-      const double motion_value = static_cast<double>(motion_row[x]);
-      const double w = motion_value + 1.0; // 权重：运动响应越强，权重越大，得运动中心
-
-      ++a.area;
-      a.sum_gray += gray_value;
-      a.sum_motion += motion_value;
-      a.sum_w += w;
-      a.sum_wx += w * static_cast<double>(x);
-      a.sum_wy += w * static_cast<double>(y);
-    }
-  }
-
+  // 对每个连通域在其 bbox 范围内累积特征，避免扫描全图
   for (int label = 1; label < num_labels; ++label) {
-    const LabelAccumulator& a = acc[static_cast<std::size_t>(label)];
+    const int bx = stats.at<int>(label, cv::CC_STAT_LEFT);
+    const int by = stats.at<int>(label, cv::CC_STAT_TOP);
+    const int bw = stats.at<int>(label, cv::CC_STAT_WIDTH);
+    const int bh = stats.at<int>(label, cv::CC_STAT_HEIGHT);
+    const cv::Rect bbox{bx, by, bw, bh};
+
+    if (bbox.x < 0 || bbox.y < 0 ||
+        bbox.br().x > gray_frame.cols || bbox.br().y > gray_frame.rows) {
+      continue;
+    }
+
+    LabelAccumulator& a = acc[static_cast<std::size_t>(label)];
+
+    for (int y = by; y < by + bh; ++y) {
+      const int* label_row = labels.ptr<int>(y);
+      const std::uint8_t* gray_row = gray_u8.ptr<std::uint8_t>(y);
+      const std::uint8_t* motion_row = motion_u8.ptr<std::uint8_t>(y);
+      for (int x = bx; x < bx + bw; ++x) {
+        if (label_row[x] != label) {
+          continue;
+        }
+
+        const double gray_value = static_cast<double>(gray_row[x]);
+        const double motion_value = static_cast<double>(motion_row[x]);
+        const double w = motion_value + 1.0;
+
+        ++a.area;
+        a.sum_gray += gray_value;
+        a.sum_motion += motion_value;
+        a.sum_w += w;
+        a.sum_wx += w * static_cast<double>(x);
+        a.sum_wy += w * static_cast<double>(y);
+      }
+    }
+
     const int area = a.area;
     if (area <= 0) {
       continue;
     }
 
-    const int x = stats.at<int>(label, cv::CC_STAT_LEFT);
-    const int y = stats.at<int>(label, cv::CC_STAT_TOP);
-    const int w = stats.at<int>(label, cv::CC_STAT_WIDTH);
-    const int h = stats.at<int>(label, cv::CC_STAT_HEIGHT);
-    const cv::Rect bbox{x, y, w, h};
-
-    if (bbox.x < 0 || bbox.y < 0 || bbox.br().x > gray_frame.cols || bbox.br().y > gray_frame.rows) {
-      continue;
-    }
+    const int w = bw;
+    const int h = bh;
 
     const double geom_cx = centroids.at<double>(label, 0);
     const double geom_cy = centroids.at<double>(label, 1);
@@ -198,10 +170,7 @@ std::vector<Candidate> ExtractCandidates(
     const float extent = static_cast<float>(
         static_cast<double>(area) / static_cast<double>(std::max(1, w * h)));
     const float rank_score = ComputeRankScore(
-        motion_score,
-        local_contrast,
-        extent,
-        circularity_proxy);
+        motion_score, local_contrast, extent, circularity_proxy);
 
     Candidate candidate;
     candidate.bbox = bbox;

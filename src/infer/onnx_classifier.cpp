@@ -1,6 +1,7 @@
 #include "pellet/infer/onnx_classifier.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <exception>
@@ -11,6 +12,9 @@
 
 #include <wust_vl/common/utils/logger.hpp>
 
+#include "pellet/utils/infer_utils.hpp"
+#include "pellet/utils/debug_utils.hpp"
+
 #if defined(PELLET_WITH_ORT)
 #include <onnxruntime_cxx_api.h>
 #endif
@@ -19,21 +23,11 @@ namespace pellet::infer {
 namespace {
 
 constexpr const char* kBackendName = "onnxruntime";
-
-std::string ToLower(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return text;
-}
-
-int ResolveBatchSize(const int configured_batch_size) {
-  return std::max(1, configured_batch_size);
-}
-
-bool IsSupportedPrecision(const std::string& precision) {
-  return precision == "fp32" || precision == "int8";
-}
+constexpr const char* kWarnKeyScratchNotReady = "onnx_scratch_not_ready";
+constexpr const char* kWarnKeyInferFail = "onnx_infer_fail";
+constexpr const char* kWarnKeyCooldown = "onnx_cooldown";
+constexpr int kInferFailureCooldownThreshold = 3;
+constexpr auto kInferFailureCooldown = std::chrono::milliseconds(800);
 
 void LogInitDebug(
     const InferenceConfig& config,
@@ -44,82 +38,19 @@ void LogInitDebug(
     return;
   }
   WUST_INFO("infer") << "backend=" << kBackendName
-                     << ", precision=" << ToLower(config.precision)
-                     << ", batch_size=" << ResolveBatchSize(config.batch_size)
+                     << ", precision=" << InferToLower(config.precision)
+                     << ", batch_size=" << InferResolveBatchSize(config.batch_size)
                      << ", model_resolved_path=" << model_resolved_path
                      << ", actual_mode=" << actual_mode;
 }
 
 std::string ResolveModelPath(const InferenceConfig& config) {
-  const std::string precision = ToLower(config.precision);
+  const std::string precision = InferToLower(config.precision);
   if (precision == "int8" && !config.int8_model_path.empty() &&
       std::filesystem::exists(config.int8_model_path)) {
     return config.int8_model_path;
   }
   return config.model_path;
-}
-
-bool FillInputTensor(
-    const cv::Mat& roi,
-    float* dst,
-    std::size_t expected_elements) {
-  if (roi.empty() || roi.type() != CV_8UC1 || dst == nullptr || expected_elements == 0U) {
-    return false;
-  }
-
-  const std::size_t base_elements = static_cast<std::size_t>(roi.total());
-  if (base_elements == 0U) {
-    return false;
-  }
-
-  constexpr float kInv255 = 1.0F / 255.0F; //归一化
-  auto copy_plane = [&](float* out) {
-    if (roi.isContinuous()) {
-      const uint8_t* src = roi.ptr<uint8_t>();
-      for (std::size_t i = 0; i < base_elements; ++i) {
-        out[i] = static_cast<float>(src[i]) * kInv255;
-      }
-      return;
-    }
-    std::size_t index = 0U;
-    for (int y = 0; y < roi.rows; ++y) {
-      const uint8_t* row = roi.ptr<uint8_t>(y);
-      for (int x = 0; x < roi.cols; ++x) {
-        out[index++] = static_cast<float>(row[x]) * kInv255;
-      }
-    }
-  };
-
-  if (expected_elements == base_elements) {
-    copy_plane(dst);
-    return true;
-  }
-
-  if (expected_elements > base_elements && expected_elements % base_elements == 0U) {
-    const std::size_t repeat = expected_elements / base_elements;
-    for (std::size_t i = 0; i < repeat; ++i) {
-      copy_plane(dst + static_cast<std::ptrdiff_t>(i * base_elements));
-    }
-    return true;
-  }
-
-  std::fill_n(dst, expected_elements, 0.0F);
-  const std::size_t copy_count = std::min(expected_elements, base_elements);
-  if (roi.isContinuous()) {
-    const uint8_t* src = roi.ptr<uint8_t>();
-    for (std::size_t i = 0; i < copy_count; ++i) {
-      dst[i] = static_cast<float>(src[i]) * kInv255;
-    }
-    return true;
-  }
-  std::size_t index = 0U;
-  for (int y = 0; y < roi.rows && index < copy_count; ++y) {
-    const uint8_t* row = roi.ptr<uint8_t>(y);
-    for (int x = 0; x < roi.cols && index < copy_count; ++x) {
-      dst[index++] = static_cast<float>(row[x]) * kInv255;
-    }
-  }
-  return true;
 }
 
 std::size_t CountElements(const std::vector<int64_t>& shape) {
@@ -138,48 +69,12 @@ std::size_t CountElements(const std::vector<int64_t>& shape) {
   return count;
 }
 
-float ExtractScore(const float* output, std::size_t output_count) {
-  if (output == nullptr || output_count == 0) {
-    return 0.0F;
-  }
-  const float score = output_count >= 2 ? output[1] : output[0];
-  return std::clamp(score, 0.0F, 1.0F);
-}
-
-float ExtractBatchScoreAt(
-    const float* output,
-    std::size_t output_count,
-    std::size_t batch_size,
-    std::size_t batch_index) {
-  batch_size = std::max<std::size_t>(1, batch_size);
-  if (output == nullptr || output_count == 0) {
-    return 0.0F;
-  }
-
-  if (batch_size == 1) {
-    return batch_index == 0U ? ExtractScore(output, output_count) : 0.0F;
-  }
-
-  if (output_count < batch_size) {
-    return ExtractScore(output, output_count);
-  }
-
-  const std::size_t stride = std::max<std::size_t>(1, output_count / batch_size);
-  const std::size_t start = batch_index * stride;
-  if (start >= output_count) {
-    return 0.0F;
-  }
-  const std::size_t remaining = output_count - start;
-  const std::size_t sample_count = std::min(stride, remaining);
-  return ExtractScore(output + static_cast<std::ptrdiff_t>(start), sample_count);
-}
-
 #if defined(PELLET_WITH_ORT)
 void ConfigureOrtProvider(const std::string& device, Ort::SessionOptions* session_options) {
   if (session_options == nullptr) {
     return;
   }
-  const std::string normalized = ToLower(device);
+  const std::string normalized = InferToLower(device);
   if (normalized == "gpu" || normalized == "cuda") {
     session_options->AppendExecutionProvider_CUDA({});
     return;
@@ -204,13 +99,12 @@ std::vector<int64_t> ResolveInputShape(
     return {1, 1, input_height, input_width};
   }
   std::vector<int64_t> shape = raw_shape;
-  shape[0] = (shape[0] > 0) ? shape[0] : 1;  // N
-  shape[1] = 1;                               // C
-  shape[2] = static_cast<int64_t>(input_height);  // H
-  shape[3] = static_cast<int64_t>(input_width);   // W
+  shape[0] = (shape[0] > 0) ? shape[0] : 1;
+  shape[1] = 1;
+  shape[2] = static_cast<int64_t>(input_height);
+  shape[3] = static_cast<int64_t>(input_width);
   return shape;
 }
-
 #endif
 
 }  // namespace
@@ -219,6 +113,9 @@ struct OnnxClassifier::Impl {
   bool initialized{false};
   bool runtime_available{false};
   bool debug_log_infer{false};
+  int consecutive_failures{0};
+  std::chrono::steady_clock::time_point cooldown_until{};
+  bool degraded_last_call{false};
 #if defined(PELLET_WITH_ORT)
   std::unique_ptr<Ort::Env> env;
   std::unique_ptr<Ort::Session> session;
@@ -251,14 +148,17 @@ bool OnnxClassifier::Init(
   impl_->initialized = true;
   impl_->runtime_available = false;
   impl_->debug_log_infer = runtime_options.debug_log_init;
+  impl_->consecutive_failures = 0;
+  impl_->cooldown_until = std::chrono::steady_clock::time_point{};
+  impl_->degraded_last_call = false;
 
 #if defined(PELLET_WITH_ORT)
   impl_->memory_info.reset();
   impl_->run_shape_scratch.clear();
   impl_->batch_input_scratch.clear();
   impl_->valid_mask_scratch.clear();
-  const std::string precision = ToLower(config_.precision);
-  if (!IsSupportedPrecision(precision)) {
+  const std::string precision = InferToLower(config_.precision);
+  if (!InferIsSupportedPrecision(precision)) {
     WUST_ERROR("onnx_classifier") << "unsupported precision for ONNX backend: " << config_.precision;
     return false;
   }
@@ -280,7 +180,7 @@ bool OnnxClassifier::Init(
     impl_->session = std::make_unique<Ort::Session>(*impl_->env, model_path.c_str(), session_options);
     impl_->input_width = std::max(1, config_.input_width);
     impl_->input_height = std::max(1, config_.input_height);
-    impl_->batch_size = ResolveBatchSize(config_.batch_size);
+    impl_->batch_size = InferResolveBatchSize(config_.batch_size);
 
     Ort::AllocatorWithDefaultOptions allocator;
     Ort::AllocatedStringPtr input_name_alloc =
@@ -327,7 +227,7 @@ bool OnnxClassifier::Init(
     impl_->output_count = CountElements(output_tensor_info.GetShape());
 
     const std::size_t configured_chunk_size =
-        static_cast<std::size_t>(ResolveBatchSize(impl_->batch_size));
+        static_cast<std::size_t>(InferResolveBatchSize(impl_->batch_size));
     const std::size_t static_model_batch =
         static_cast<std::size_t>(std::max<int64_t>(1, impl_->model_batch_dim));
     const bool fixed_batch_model = !impl_->dynamic_batch_allowed;
@@ -356,10 +256,10 @@ bool OnnxClassifier::Init(
     if (runtime_options.debug_log_init &&
         !impl_->dynamic_batch_allowed &&
         impl_->model_batch_dim > 0 &&
-        static_cast<std::size_t>(ResolveBatchSize(config_.batch_size)) <
+        static_cast<std::size_t>(InferResolveBatchSize(config_.batch_size)) <
             static_cast<std::size_t>(impl_->model_batch_dim)) {
       WUST_WARN("onnx_classifier")
-          << "configured batch_size=" << ResolveBatchSize(config_.batch_size)
+          << "configured batch_size=" << InferResolveBatchSize(config_.batch_size)
           << " is smaller than fixed model batch=" << impl_->model_batch_dim
           << ", forcing chunk_size/run_batch to model batch";
     }
@@ -381,7 +281,9 @@ bool OnnxClassifier::Init(
 }
 
 std::vector<float> OnnxClassifier::Infer(const std::vector<cv::Mat>& rois) {
+  impl_->degraded_last_call = false;
   if (!impl_->initialized || !impl_->runtime_available) {
+    impl_->degraded_last_call = true;
     return std::vector<float>(rois.size(), 0.0F);
   }
 
@@ -391,13 +293,28 @@ std::vector<float> OnnxClassifier::Infer(const std::vector<cv::Mat>& rois) {
   if (impl_->session == nullptr || impl_->input_shape.empty() ||
       impl_->input_name.empty() || impl_->output_name.empty() ||
       impl_->memory_info == nullptr) {
+    impl_->degraded_last_call = true;
+    return scores;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (impl_->cooldown_until > now) {
+    impl_->degraded_last_call = true;
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyCooldown)) {
+      const auto cooldown_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   impl_->cooldown_until - now)
+                                   .count();
+      WUST_WARN("infer")
+          << "backend=" << kBackendName
+          << ", infer temporarily disabled due to recent failures, cooldown_ms="
+          << cooldown_ms;
+    }
     return scores;
   }
 
   const char* input_names[] = {impl_->input_name.c_str()};
   const char* output_names[] = {impl_->output_name.c_str()};
   const std::size_t configured_chunk_size =
-      static_cast<std::size_t>(ResolveBatchSize(impl_->batch_size));
+      static_cast<std::size_t>(InferResolveBatchSize(impl_->batch_size));
   const std::size_t static_model_batch =
       static_cast<std::size_t>(std::max<int64_t>(1, impl_->model_batch_dim));
   const bool fixed_batch_model = !impl_->dynamic_batch_allowed;
@@ -410,7 +327,8 @@ std::vector<float> OnnxClassifier::Infer(const std::vector<cv::Mat>& rois) {
   const std::size_t max_input_elements = max_run_batch * impl_->sample_element_count;
   if (impl_->batch_input_scratch.size() < max_input_elements ||
       impl_->valid_mask_scratch.size() < chunk_size) {
-    if (impl_->debug_log_infer) {
+    impl_->degraded_last_call = true;
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyScratchNotReady)) {
       WUST_WARN("infer")
           << "backend=" << kBackendName
           << ", scratch buffer not ready, input_scratch=" << impl_->batch_input_scratch.size()
@@ -489,18 +407,46 @@ std::vector<float> OnnxClassifier::Infer(const std::vector<cv::Mat>& rois) {
             ExtractBatchScoreAt(output_data, output_count, run_batch, i);
       }
     }
+    impl_->consecutive_failures = 0;
+    impl_->cooldown_until = std::chrono::steady_clock::time_point{};
   } catch (const std::exception& e) {
-    if (impl_->debug_log_infer) {
-      WUST_WARN("infer")
-          << "backend=" << kBackendName
-          << ", infer failed once, fallback remaining samples to 0.0, err=" << e.what();
+    impl_->degraded_last_call = true;
+    ++impl_->consecutive_failures;
+    if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+      impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+    }
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
+      if (impl_->debug_log_infer) {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0)
+            << ", err=" << e.what();
+      } else {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
+      }
     }
     return scores;
   } catch (...) {
-    if (impl_->debug_log_infer) {
+    impl_->degraded_last_call = true;
+    ++impl_->consecutive_failures;
+    if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
+      impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
+    }
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
       WUST_WARN("infer")
           << "backend=" << kBackendName
-          << ", infer failed once, fallback remaining samples to 0.0";
+          << ", infer failed once, fallback remaining samples to 0.0"
+          << ", consecutive_failures=" << impl_->consecutive_failures
+          << ", cooldown_active="
+          << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
     }
     return scores;
   }
@@ -508,6 +454,14 @@ std::vector<float> OnnxClassifier::Infer(const std::vector<cv::Mat>& rois) {
 #endif
 
   return scores;
+}
+
+InferRuntimeState OnnxClassifier::GetRuntimeState() const {
+  InferRuntimeState state;
+  state.consecutive_failures = impl_->consecutive_failures;
+  state.cooldown_active = impl_->cooldown_until > std::chrono::steady_clock::now();
+  state.degraded_last_call = impl_->degraded_last_call;
+  return state;
 }
 
 }  // namespace pellet::infer

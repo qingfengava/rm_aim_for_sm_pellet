@@ -16,6 +16,7 @@
 #include <wust_vl/video/hik.hpp>
 
 #include "pellet/detector/frame_queue.hpp"
+#include "pellet/utils/debug_utils.hpp"
 
 namespace pellet::detector {
 namespace {
@@ -412,6 +413,15 @@ void CaptureWorker::OnFrame(ImageFrame& frame) {
       } else if (frame.src_img.channels() == 1) {
         cv::cvtColor(frame.src_img, frame_bgr, cv::COLOR_GRAY2BGR);
       } else {
+        std::lock_guard<std::mutex> lock(unsupported_pixel_mutex_);
+        ++unsupported_pixel_drop_total_;
+        if (utils::ShouldLogRateLimited("capture_worker", "unsupported_pixel_layout")) {
+          WUST_WARN("capture_worker")
+              << "event=unsupported_pixel_layout, pixel_format="
+              << static_cast<int>(frame.pixel_format)
+              << ", channels=" << frame.src_img.channels()
+              << ", drop_total=" << unsupported_pixel_drop_total_;
+        }
         return;
       }
       break;

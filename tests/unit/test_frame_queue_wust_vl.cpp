@@ -77,4 +77,26 @@ TEST(FrameQueueWustVlTest, CapacityOverflowDropsOldestKeepsNewest) {
   ASSERT_TRUE(queue.Pop(&out, /*timeout_ms=*/20));
   EXPECT_EQ(out.frame_id, 3U);
   EXPECT_FALSE(queue.Pop(&out, /*timeout_ms=*/10));
+
+  const auto stats = queue.GetStatsSnapshot();
+  EXPECT_EQ(stats.capacity, 2U);
+  EXPECT_EQ(stats.push_total, 3U);
+  EXPECT_EQ(stats.pop_total, 2U);
+  EXPECT_EQ(stats.drop_overflow, 1U);
+  EXPECT_EQ(stats.drop_stale, 0U);
+}
+
+TEST(FrameQueueWustVlTest, SnapshotTracksStaleDrops) {
+  pellet::detector::FrameQueue queue(/*capacity=*/3, /*queue_valid_ms=*/20, /*pop_poll_ms=*/2);
+
+  queue.Push(MakePacket(1));
+  queue.Push(MakePacket(2));
+  std::this_thread::sleep_for(std::chrono::milliseconds(40));
+
+  pellet::detector::FramePacket out;
+  EXPECT_FALSE(queue.Pop(&out, /*timeout_ms=*/10));
+  const auto stats = queue.GetStatsSnapshot();
+  EXPECT_EQ(stats.push_total, 2U);
+  EXPECT_EQ(stats.pop_total, 0U);
+  EXPECT_GE(stats.drop_stale, 1U);
 }

@@ -14,6 +14,12 @@ struct InferRuntimeOptions {
   bool debug_log_init{false};
 };
 
+struct InferRuntimeState {
+  int consecutive_failures{0};
+  bool cooldown_active{false};
+  bool degraded_last_call{false};
+};
+
 class IClassifier {
  public:
   virtual ~IClassifier() = default;
@@ -22,6 +28,7 @@ class IClassifier {
       const InferenceConfig& config,
       const InferRuntimeOptions& runtime_options) = 0;
   virtual std::vector<float> Infer(const std::vector<cv::Mat>& rois) = 0;
+  virtual InferRuntimeState GetRuntimeState() const { return InferRuntimeState{}; }
 };
 
 std::shared_ptr<IClassifier> CreateClassifier(const std::string& backend);

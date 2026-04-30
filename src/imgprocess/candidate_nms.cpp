@@ -8,7 +8,6 @@
 namespace pellet::imgprocess {
 namespace {
 
-  //计算两个框的重叠程度
 float ComputeIou(const cv::Rect& a, const cv::Rect& b) {
   const int ax2 = a.x + a.width;
   const int ay2 = a.y + a.height;
@@ -37,9 +36,40 @@ float ComputeIou(const cv::Rect& a, const cv::Rect& b) {
   return inter_area / union_area;
 }
 
+std::vector<Candidate> ApplyNmsImpl(
+    const std::vector<Candidate>& candidates,
+    float iou_threshold,
+    const std::vector<int>& order) {
+  std::vector<bool> suppressed(candidates.size(), false);
+  std::vector<Candidate> kept;
+  kept.reserve(candidates.size());
+
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    const int current_idx = order[i];
+    const std::size_t current_u = static_cast<std::size_t>(current_idx);
+    if (suppressed[current_u]) {
+      continue;
+    }
+
+    kept.push_back(candidates[current_u]);
+
+    for (std::size_t j = i + 1; j < order.size(); ++j) {
+      const int other_idx = order[j];
+      const std::size_t other_u = static_cast<std::size_t>(other_idx);
+      if (suppressed[other_u]) {
+        continue;
+      }
+      if (ComputeIou(kept.back().bbox, candidates[other_u].bbox) > iou_threshold) {
+        suppressed[other_u] = true;
+      }
+    }
+  }
+
+  return kept;
+}
+
 }  // namespace
 
-//基于IoU的非极大值抑制
 std::vector<Candidate> ApplyNms(
     const std::vector<Candidate>& candidates,
     float iou_thresh) {
@@ -63,35 +93,23 @@ std::vector<Candidate> ApplyNms(
     return a.brightness > b.brightness;
   });
 
-  std::vector<bool> suppressed(candidates.size(), false);
-  std::vector<Candidate> kept;
-  kept.reserve(candidates.size());
+  return ApplyNmsImpl(candidates, iou_threshold, order);
+}
 
-  for (std::size_t i = 0; i < order.size(); ++i) {
-    const int current_idx = order[i];
-    const std::size_t current_u = static_cast<std::size_t>(current_idx);
-    if (suppressed[current_u]) {
-      continue;
-    }
-
-    const Candidate& current = candidates[current_u];
-    kept.push_back(current);
-
-    for (std::size_t j = i + 1; j < order.size(); ++j) {
-      const int other_idx = order[j];
-      const std::size_t other_u = static_cast<std::size_t>(other_idx);
-      if (suppressed[other_u]) {
-        continue;
-      }
-
-      const float iou = ComputeIou(current.bbox, candidates[other_u].bbox);
-      if (iou > iou_threshold) {
-        suppressed[other_u] = true;
-      }
-    }
+std::vector<Candidate> ApplyNmsPreSorted(
+    const std::vector<Candidate>& candidates,
+    float iou_thresh) {
+  if (candidates.empty()) {
+    return {};
   }
 
-  return kept;
+  const float iou_threshold = std::clamp(iou_thresh, 0.0F, 1.0F);
+
+  // 入参已按 rank_score 降序，直接用顺序索引
+  std::vector<int> order(candidates.size());
+  std::iota(order.begin(), order.end(), 0);
+
+  return ApplyNmsImpl(candidates, iou_threshold, order);
 }
 
 }  // namespace pellet::imgprocess

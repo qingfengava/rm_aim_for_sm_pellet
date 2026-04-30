@@ -11,6 +11,9 @@
 #include <opencv2/core.hpp>
 #include <wust_vl/common/utils/logger.hpp>
 
+#include "pellet/utils/infer_utils.hpp"
+#include "pellet/utils/debug_utils.hpp"
+
 #if defined(PELLET_WITH_NCNN)
 #include <wust_vl/ml_net/ncnn/ncnn_net.hpp>
 #endif
@@ -21,21 +24,8 @@ namespace {
 constexpr const char* kBackendName = "ncnn";
 constexpr int kInferFailureCooldownThreshold = 3;
 constexpr auto kInferFailureCooldown = std::chrono::milliseconds(800);
-
-std::string ToLower(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return text;
-}
-
-int ResolveBatchSize(const int configured_batch_size) {
-  return std::max(1, configured_batch_size);
-}
-
-bool IsSupportedPrecision(const std::string& precision) {
-  return precision == "fp32" || precision == "int8";
-}
+constexpr const char* kWarnKeyCooldown = "ncnn_cooldown";
+constexpr const char* kWarnKeyInferFail = "ncnn_infer_fail";
 
 void LogInitDebug(
     const InferenceConfig& config,
@@ -46,8 +36,8 @@ void LogInitDebug(
     return;
   }
   WUST_INFO("infer") << "backend=" << kBackendName
-                     << ", precision=" << ToLower(config.precision)
-                     << ", batch_size=" << ResolveBatchSize(config.batch_size)
+                     << ", precision=" << InferToLower(config.precision)
+                     << ", batch_size=" << InferResolveBatchSize(config.batch_size)
                      << ", model_resolved_path=" << model_resolved_path
                      << ", actual_mode=" << actual_mode;
 }
@@ -71,12 +61,11 @@ struct NcnnModelPaths {
 };
 
 NcnnModelPaths ResolveNcnnModelPaths(const InferenceConfig& config) {
-  const std::string precision = ToLower(config.precision);
+  const std::string precision = InferToLower(config.precision);
   const bool int8_precision = (precision == "int8");
 
   NcnnModelPaths paths;
   if (int8_precision) {
-    // INT8 path must use pre-quantized NCNN artifacts supplied by user.
     paths.param_path = config.ncnn_param_path;
     paths.bin_path = config.ncnn_bin_path;
     if (paths.param_path.empty() && EndsWith(config.int8_model_path, ".param")) {
@@ -103,7 +92,7 @@ ncnn::Mat CreateInputScratch(const int width, const int height) {
   return input;
 }
 
-bool FillInputTensor(const cv::Mat& roi, ncnn::Mat* input) {
+bool FillInputTensorNcnn(const cv::Mat& roi, ncnn::Mat* input) {
   if (roi.empty() || roi.type() != CV_8UC1 || input == nullptr || input->empty()) {
     return false;
   }
@@ -142,7 +131,7 @@ bool FillInputTensor(const cv::Mat& roi, ncnn::Mat* input) {
   return true;
 }
 
-float ExtractScore(const ncnn::Mat& output) {
+float ExtractScoreNcnn(const ncnn::Mat& output) {
   if (output.empty() || output.total() == 0U) {
     return 0.0F;
   }
@@ -159,6 +148,7 @@ struct NcnnClassifier::Impl {
   bool debug_log_infer{false};
   int consecutive_failures{0};
   std::chrono::steady_clock::time_point cooldown_until{};
+  bool degraded_last_call{false};
 #if defined(PELLET_WITH_NCNN)
   std::unique_ptr<wust_vl::ml_net::NCNNNet> net;
   int batch_size{1};
@@ -181,10 +171,11 @@ bool NcnnClassifier::Init(
   impl_->debug_log_infer = runtime_options.debug_log_init;
   impl_->consecutive_failures = 0;
   impl_->cooldown_until = std::chrono::steady_clock::time_point{};
+  impl_->degraded_last_call = false;
 
 #if defined(PELLET_WITH_NCNN)
-  const std::string precision = ToLower(config_.precision);
-  if (!IsSupportedPrecision(precision)) {
+  const std::string precision = InferToLower(config_.precision);
+  if (!InferIsSupportedPrecision(precision)) {
     WUST_ERROR("ncnn_classifier")
         << "unsupported precision for NCNN backend: " << config_.precision;
     return false;
@@ -218,7 +209,7 @@ bool NcnnClassifier::Init(
 
   {
     try {
-      impl_->batch_size = ResolveBatchSize(config_.batch_size);
+      impl_->batch_size = InferResolveBatchSize(config_.batch_size);
       impl_->input_width = std::max(1, config_.input_width);
       impl_->input_height = std::max(1, config_.input_height);
       impl_->input_scratch = CreateInputScratch(impl_->input_width, impl_->input_height);
@@ -238,7 +229,7 @@ bool NcnnClassifier::Init(
           config_.input_blob_name.empty() ? std::string("input") : config_.input_blob_name;
       params.output_name =
           config_.output_blob_name.empty() ? std::string("output") : config_.output_blob_name;
-      params.use_vulkan = (ToLower(config_.device) == "gpu" || ToLower(config_.device) == "vulkan");
+      params.use_vulkan = (InferToLower(config_.device) == "gpu" || InferToLower(config_.device) == "vulkan");
       params.device_id = 0;
       params.use_light_mode = true;
       params.cpu_threads = std::max(1, config_.num_threads);
@@ -263,7 +254,9 @@ bool NcnnClassifier::Init(
 }
 
 std::vector<float> NcnnClassifier::Infer(const std::vector<cv::Mat>& rois) {
+  impl_->degraded_last_call = false;
   if (!impl_->initialized || !impl_->runtime_available) {
+    impl_->degraded_last_call = true;
     return std::vector<float>(rois.size(), 0.0F);
   }
 
@@ -271,12 +264,14 @@ std::vector<float> NcnnClassifier::Infer(const std::vector<cv::Mat>& rois) {
 
 #if defined(PELLET_WITH_NCNN)
   if (impl_->net == nullptr || impl_->input_scratch.empty()) {
+    impl_->degraded_last_call = true;
     return scores;
   }
 
   const auto now = std::chrono::steady_clock::now();
   if (impl_->cooldown_until > now) {
-    if (impl_->debug_log_infer) {
+    impl_->degraded_last_call = true;
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyCooldown)) {
       const auto cooldown_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                    impl_->cooldown_until - now)
                                    .count();
@@ -288,43 +283,54 @@ std::vector<float> NcnnClassifier::Infer(const std::vector<cv::Mat>& rois) {
     return scores;
   }
 
-  const std::size_t chunk_size = static_cast<std::size_t>(ResolveBatchSize(impl_->batch_size));
+  const std::size_t chunk_size = static_cast<std::size_t>(InferResolveBatchSize(impl_->batch_size));
   try {
     for (std::size_t chunk_begin = 0; chunk_begin < rois.size(); chunk_begin += chunk_size) {
       const std::size_t chunk_count = std::min(chunk_size, rois.size() - chunk_begin);
       for (std::size_t i = 0; i < chunk_count; ++i) {
         const std::size_t roi_index = chunk_begin + i;
-        const bool filled = FillInputTensor(rois[chunk_begin + i], &impl_->input_scratch);
+        const bool filled = FillInputTensorNcnn(rois[chunk_begin + i], &impl_->input_scratch);
         if (!filled) {
           continue;
         }
         const ncnn::Mat output = impl_->net->infer(impl_->input_scratch);
-        scores[roi_index] = ExtractScore(output);
+        scores[roi_index] = ExtractScoreNcnn(output);
       }
     }
     impl_->consecutive_failures = 0;
     impl_->cooldown_until = std::chrono::steady_clock::time_point{};
   } catch (const std::exception& e) {
+    impl_->degraded_last_call = true;
     ++impl_->consecutive_failures;
     if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
       impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
     }
-    if (impl_->debug_log_infer) {
-      WUST_WARN("infer")
-          << "backend=" << kBackendName
-          << ", infer failed once, fallback remaining samples to 0.0"
-          << ", consecutive_failures=" << impl_->consecutive_failures
-          << ", cooldown_active="
-          << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0)
-          << ", err=" << e.what();
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
+      if (impl_->debug_log_infer) {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0)
+            << ", err=" << e.what();
+      } else {
+        WUST_WARN("infer")
+            << "backend=" << kBackendName
+            << ", infer failed once, fallback remaining samples to 0.0"
+            << ", consecutive_failures=" << impl_->consecutive_failures
+            << ", cooldown_active="
+            << (impl_->cooldown_until > std::chrono::steady_clock::now() ? 1 : 0);
+      }
     }
     return scores;
   } catch (...) {
+    impl_->degraded_last_call = true;
     ++impl_->consecutive_failures;
     if (impl_->consecutive_failures >= kInferFailureCooldownThreshold) {
       impl_->cooldown_until = std::chrono::steady_clock::now() + kInferFailureCooldown;
     }
-    if (impl_->debug_log_infer) {
+    if (utils::ShouldLogRateLimited("infer", kWarnKeyInferFail)) {
       WUST_WARN("infer")
           << "backend=" << kBackendName
           << ", infer failed once, fallback remaining samples to 0.0"
@@ -338,6 +344,14 @@ std::vector<float> NcnnClassifier::Infer(const std::vector<cv::Mat>& rois) {
 #endif
 
   return scores;
+}
+
+InferRuntimeState NcnnClassifier::GetRuntimeState() const {
+  InferRuntimeState state;
+  state.consecutive_failures = impl_->consecutive_failures;
+  state.cooldown_active = impl_->cooldown_until > std::chrono::steady_clock::now();
+  state.degraded_last_call = impl_->degraded_last_call;
+  return state;
 }
 
 }  // namespace pellet::infer

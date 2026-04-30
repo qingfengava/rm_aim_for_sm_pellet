@@ -39,6 +39,10 @@ bool PelletDetector::Init() {
       utils::IsDebugEnabled(config_, utils::DebugFeature::kCaptureLogs);
   const bool thread_status_debug =
       utils::IsDebugEnabled(config_, utils::DebugFeature::kThreadStatus);
+  const bool pipeline_stats_debug =
+      utils::IsDebugEnabled(config_, utils::DebugFeature::kPipelineStats);
+  const bool stats_1s_debug =
+      utils::IsDebugEnabled(config_, utils::DebugFeature::kStats1s);
   pipeline_ = std::make_unique<detector::DetectorPipeline>(config_, classifier_);
   frame_queue_ = std::make_unique<detector::FrameQueue>(
       static_cast<std::size_t>(queue_capacity),
@@ -51,7 +55,9 @@ bool PelletDetector::Init() {
       pipeline_.get(),
       config_.detector.detect_pop_timeout_ms,
       config_.detector.thread_monitor_enable,
-      thread_status_debug);
+      thread_status_debug,
+      pipeline_stats_debug,
+      stats_1s_debug);
 
   initialized_ = true;
   return true;

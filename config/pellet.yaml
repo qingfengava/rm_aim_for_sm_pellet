@@ -10,28 +10,40 @@ detector:
   thread_monitor_enable: 1
 
 motion:
-  gaussian_ksize: 3
-  gaussian_sigma: 0.8
-  adaptive_threshold: 1
+  gaussian_ksize: 1
+  gaussian_sigma: 0.0
 
-  diff_threshold: 18
-  diff_threshold_min: 10
-  diff_threshold_max: 35
+  # KNN 背景减除（低占用）
+  bg_backend: "knn"
+  bg_history: 30
+  bg_var_threshold: 14.0
+  bg_learning_rate: -1.0
+  bg_downsample: 2
 
-  morph_enable: 1
-  morph_type: "open" #open/close
+  # 全局扰动保护
+  global_fg_ratio_max: 0.50
+  global_response_attenuation: 0.25
+
+  # 形态学（关闭以保留小目标）
+  morph_enable: 0
+  morph_type: "open"
   morph_kernel: 3
   morph_iters: 1
-  
+
+  # 运动确认
+  motion_confirm_enable: 1
+  motion_confirm_threshold: 10
+
+  # 候选过滤
   area_min: 3
-  area_max: 120
+  area_max: 150
   ratio_max: 4.0
-  extent_min: 0.2
-  contrast_min: 0.06
-  motion_score_min: 0.08
+  extent_min: 0.15
+  contrast_min: 0.04
+  motion_score_min: 0.04
   nms_enable: 1
   nms_iou: 0.25
-  max_candidates: 6 #pre-nms
+  max_candidates: 6
 
 roi:
   output_size: 32
@@ -40,31 +52,42 @@ roi:
   max_crop: 48
 
 inference:
-  backend: "onnxruntime"
-  model_path: "model/pellet_cls.onnx" #通用路径，下方路径为空时使用，统一为onnx
+  backend: "onnxruntime" # "onnxruntime" / "tensorrt" / "openvino" / "ncnn"
+  model_path: "model/pellet_cls.onnx" #通用模型路径
   device: "GPU"
+
   input_blob_name: "input"
   output_blob_name: "output"
+
   input_width: 32
   input_height: 32
+
   batch_size: 1
-  precision: "fp32" # fp32/int8
-  int8_model_path: "" # 空则回退 model_path
-  engine_path: "" #INT8 + 空engine_path 直接失败
-  trt_require_prebuilt_engine: 0 # 0:允许自动构建, 1:engine不存在时直接失败
+
+  precision: "fp32"   # fp32 / int8
+  int8_model_path: ""
+
+  engine_path: ""
+  trt_require_prebuilt_engine: 0   # 0=允许自动构建 engine；1=必须使用预构建 engine（缺失则启动失败）
+
   openvino_model_path: ""
   ncnn_param_path: ""
   ncnn_bin_path: ""
+
   num_threads: 1
-  positive_threshold: 0.75
-  weak_threshold: 0.45
-  max_candidates: 2 #post-nms
+
+  # 分类阈值：
+  # - score >= positive_threshold：判定为阳性
+  # - weak_threshold <= score < positive_threshold：弱阳性候选
+  #   若本帧无强阳性，可回退输出最高弱阳性（降低漏检）
+  positive_threshold: 0.65
+  weak_threshold: 0.40
+
+  max_candidates: 3 #NMS 后送入分类器的 TopK 上限
 
 debug:
-  enable: 0
-  level: 0  # 自动分级：0=capture，1=capture+pipeline_stats+thread_status，2=all
+  # 位掩码（十进制），每个 bit 独立控制一个模块的输出，0=全关
+  #   1=采集日志  2=pipeline统计  4=线程状态
+  #   8=1秒汇总  16=推理日志
+  #   例: 3=采集+统计  7=采集+统计+线程  31=全部
   modules_mask: 0
-  # 手动位掩码覆盖：
-  # 0   -> 不手动覆盖，走 enable + level
-  # 非0 -> 按位启用并覆盖 enable/level（例如 1=仅capture，33=capture+infer）
-  # bit0:capture bit1:morphology bit2:pipeline_stats bit3:thread_status bit4:window bit5:infer

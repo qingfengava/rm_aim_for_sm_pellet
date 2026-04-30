@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -39,10 +40,12 @@ pellet::detector::FramePacket MakePacket(uint32_t frame_id, const cv::Mat& frame
   return packet;
 }
 
-cv::Mat MakeFrameWithTarget(bool has_target) {
+cv::Mat MakeFrameWithTarget(bool has_target, int offset_xy = 0) {
   cv::Mat frame = cv::Mat::zeros(64, 64, CV_8UC3);
   if (has_target) {
-    cv::rectangle(frame, cv::Rect(28, 28, 6, 6), cv::Scalar(255, 255, 255), cv::FILLED);
+    const int x = std::clamp(28 + offset_xy, 0, 58);
+    const int y = std::clamp(28 + offset_xy, 0, 58);
+    cv::rectangle(frame, cv::Rect(x, y, 6, 6), cv::Scalar(255, 255, 255), cv::FILLED);
   }
   return frame;
 }
@@ -117,10 +120,11 @@ TEST(DetectWorkerThreadingTest, ProducesDetectionsWhenFramesArrive) {
   worker.Start();
 
   frame_queue.Push(MakePacket(0, MakeFrameWithTarget(false)));
-  frame_queue.Push(MakePacket(1, MakeFrameWithTarget(true)));
-  frame_queue.Push(MakePacket(2, MakeFrameWithTarget(true)));
+  for (uint32_t i = 1; i <= 8; ++i) {
+    frame_queue.Push(MakePacket(i, MakeFrameWithTarget(true, static_cast<int>(i % 4))));
+  }
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(120));
+  std::this_thread::sleep_for(std::chrono::milliseconds(180));
 
   std::vector<pellet::Detection> detections;
   const bool ok = worker.PopLatest(&detections, /*timeout_ms=*/1500);
@@ -130,5 +134,5 @@ TEST(DetectWorkerThreadingTest, ProducesDetectionsWhenFramesArrive) {
 
   ASSERT_TRUE(ok);
   ASSERT_FALSE(detections.empty());
-  EXPECT_EQ(detections.front().frame_id, 2U);
+  EXPECT_GE(detections.front().frame_id, 2U);
 }
